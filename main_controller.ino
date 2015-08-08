@@ -1,12 +1,15 @@
 /*
  BM 2015 Chuckie Pinball by TonyOxide
  This code is in the public domain.
- Version 0.02
+ Version 0.03
+ 
+ Changelog
+ v 0.03 Adding CD4067 Driver - main program flow
  */
 
 // Turn debugging on or off...
 // Don't even try to use #if syntax, the IDE breaks if you do
-char TDEBUG = 0;
+char TDEBUG = 3;
 
 unsigned char pin_led_test = 13;
 unsigned char pin_sen_pir_test = 7;
@@ -57,8 +60,24 @@ unsigned int ctr_red = 1;   // Number of red activations (
 unsigned int ctr_green = 0; // Number of green activations
 unsigned int ctr_uv = 0;    // Number of UV activations
 unsigned int ctr_loop = 0;  // Number of loops
+unsigned int time_loop_delay = 0;
 
 unsigned long time_led_start = 0;  // Time LED went on
+
+//CD4067B variables
+unsigned char muxInputPin = A5;    // mux input to arduino
+unsigned char muxPinD = A4;     //mux Address line
+unsigned char muxPinC = A3;     //mux Address line
+unsigned char muxPinB = A2;     //mux Address line
+unsigned char muxPinA = A1;     //mux Address line
+unsigned char muxResult = 0;  //Current mux line result
+unsigned char totalFingersCounted = 0;
+
+
+//User State Variables
+unsigned char userInProximity = 0;
+unsigned int  userDistance = 0;
+unsigned int fingerDebounceCount = 0;
 
 // This function looks for someone standing near the exhibit
 int pir_check(int pin = 0) {
@@ -84,28 +103,80 @@ void setup() {
   pin_led_cross_off = pin_led_red;
   ctr_red = 1;
   time_led_start = millis() - delay_red_green_random - 1; // Turn an LED on right away
+  
+  // mux outputs
+  pinMode(muxPinA, OUTPUT); 
+  pinMode(muxPinB, OUTPUT);
+  pinMode(muxPinC, OUTPUT);
+  pinMode(muxPinD, OUTPUT);
+  //mux input is analog
+  pinMode(muxInputPin, INPUT);
 
-if (TDEBUG >= 1) {
-  Serial.begin(9600);
-  pinMode(pin_sen_pir_test, INPUT);
-  pinMode(pin_led_test, OUTPUT);
-}
+
+  //TCB380 Initilization
+  Serial.begin(4800);
+  Serial.write(232);
+  delay(50);
+
+  if (TDEBUG == 1) {
+    Serial.begin(9600);
+    pinMode(pin_sen_pir_test, INPUT);
+    pinMode(pin_led_test, OUTPUT);
+  }
 }
 
 void loop() {
-	// Housekeeping
+
+  // Housekeeping
   ctr_time_prv = ctr_time; // Set the previous value of the timer
   ctr_time = millis();
 	time_loop_delay = ctr_time - ctr_time_prv; // Delay since the last loop
   ctr_loop++;
 
-	// See what we should do with the illumination LEDs
+  // See what we should do with the illumination LEDs
   panel_checkFade();
 	
-	// See what is happening with the PIR sensors
+  // See what is happening with the PIR sensors
   sen_pir_test = pir_check(pin_sen_pir_test);
-	
-	// Delay at the end of the loop (optional)
+  
+  //Scan the mux to count fingers
+  totalFingersCounted = scanFingerSensors();
+
+  userInProximity = readFrontPIRSensor();
+  userDistance = readDistanceSensor();
+
+  //
+  if(fingerDebounceCount > 1000){
+    Serial.write(totalFingersCounted);
+    fingerDebounceCount = 0;
+  }
+  fingerDebounceCount++;
+  
+  //No user detected - Bark for attention
+  
+  //If the front PIR detects movement
+  //Tell user to get closer and put fingers in
+  //Add timer to call the user a spoilsport if they won't come
+  
+  //Finger count routine begins - overrides PIR
+   //Debounce finger input sensors and speak count
+   //Fire solenoid at random interval
+ 
+  //Begin Magic Mirror routine
+   //Guide user to optimal distance
+   //If above threshold - speak "closer"
+   //If below threshold - speak "farther away" 
+   //Fire Mirror lighting
+   //Laugh
+   //Instruct user to find their true selves
+  
+  //Timer for user to leave
+  //Tell them to scram on timeout
+  //Back to  outer loop
+  
+  //Check Rear PIR - yell at hooligans behind the machine
+  
+  // Delay at the end of the loop (optional)
   delay(loop_delay);
 }
 
@@ -184,7 +255,7 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
       analogWrite(pin_led_cross_on, led_cross_on);
       analogWrite(pin_led_cross_off, led_cross_off);
       // print the results to the serial monitor:
-			if (TDEBUG >= 1) {
+			if (TDEBUG == 1) {
 				Serial.print("ledon=");
 				Serial.print(led_cross_on);
 				Serial.print("\tledoff=");
@@ -201,6 +272,186 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
 
 }
 
+//Reads finger inputs from mux into array
+unsigned char scanFingerSensors(void){
 
+  unsigned char tempFingerCount = 0; //current finger count for return
+  unsigned char tempMuxResult = 0;
+  
+  //Finger sensors are on first ten mux inputs
+  for(unsigned char i = 0; i < 10; i++){
+    tempMuxResult = readMuxPin(i);
+    if(TDEBUG == 3){
+      Serial.print(tempMuxResult);
+    }
+    tempFingerCount = tempFingerCount + tempMuxResult;
+    tempMuxResult = 0;
+  }
+  if(TDEBUG == 3){
+    Serial.println("");
+  }
+  
+  return tempFingerCount;
+}
 
+//Check the Front PIR Sensor
+unsigned char readFrontPIRSensor(){
+  unsigned char result = 0;
+  
+  result = readMuxPin(10);
+  if(TDEBUG == 4){
+    Serial.print("PIR = ");
+    Serial.println(result);
+  }
+  return result;
+  
+}
 
+//Check the distance sensor
+unsigned char readDistanceSensor(){
+  unsigned char result = 0;
+  
+  result = readMuxPin(12);
+  
+  if(TDEBUG == 4){
+    Serial.print("Distance = ");
+    Serial.println(result);
+  }
+  
+  return result;
+}
+
+//Pass mux input to read
+//Returns digital result except for distance sensor
+unsigned int readMuxPin(unsigned char muxPin){
+
+  unsigned int result;
+
+  switch(muxPin){
+  
+    case 0:
+      //set address lines
+      digitalWrite(muxPinA, 0);
+      digitalWrite(muxPinB, 0);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+  
+    case 1:
+      //set address lines
+      digitalWrite(muxPinA, 1);
+      digitalWrite(muxPinB, 0);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+  
+    case 2:
+      //set address lines
+      digitalWrite(muxPinA, 0);
+      digitalWrite(muxPinB, 1);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+
+    case 3:
+      //set address lines
+      digitalWrite(muxPinA, 1);
+      digitalWrite(muxPinB, 1);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+  
+    case 4:
+      //set address lines
+      digitalWrite(muxPinA, 0);
+      digitalWrite(muxPinB, 0);
+      digitalWrite(muxPinC, 1);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+
+    case 5:
+      //set address lines
+      digitalWrite(muxPinA, 1);
+      digitalWrite(muxPinB, 0);
+      digitalWrite(muxPinC, 1);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+    
+    case 6:
+      //set address lines
+      digitalWrite(muxPinA, 0);
+      digitalWrite(muxPinB, 1);
+      digitalWrite(muxPinC, 1);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+      
+    case 7:
+      //set address lines
+      digitalWrite(muxPinA, 1);
+      digitalWrite(muxPinB, 1);
+      digitalWrite(muxPinC, 1);
+      digitalWrite(muxPinD, 0);
+      result = digitalRead(muxInputPin);
+      break;
+
+    case 8:
+      //set address lines
+      digitalWrite(muxPinA, 0);
+      digitalWrite(muxPinB, 0);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 1);
+      result = digitalRead(muxInputPin);
+      break;
+  
+    case 9:
+      //set address lines
+      digitalWrite(muxPinA, 1);
+      digitalWrite(muxPinB, 0);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 1);
+      result = digitalRead(muxInputPin);
+      break;
+
+    //Front PIR
+    case 10:
+      //set address lines
+      digitalWrite(muxPinA, 0);
+      digitalWrite(muxPinB, 1);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 1);
+      result = digitalRead(muxInputPin);
+      break;
+    
+    //Rear PIR
+    case 11: 
+      //set address lines
+      digitalWrite(muxPinA, 1);
+      digitalWrite(muxPinB, 1);
+      digitalWrite(muxPinC, 0);
+      digitalWrite(muxPinD, 1);
+      result = digitalRead(muxInputPin);
+      break;    
+      
+    case 12: //Distance Sensor
+      //set address lines
+      digitalWrite(muxPinA, 0);
+      digitalWrite(muxPinB, 0);
+      digitalWrite(muxPinC, 1);
+      digitalWrite(muxPinD, 1);      
+      delay(10);
+      result = analogRead(muxInputPin);
+      break;      
+
+    default:
+      break;
+  }
+
+  return result;
+}
