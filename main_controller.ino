@@ -10,33 +10,34 @@
  */
 
 // Turn debugging on or off...
-#define TDEBUG;
+// Don't even try to use #if syntax, the IDE breaks if you do
+char TDEBUG = 0;
 
-#if defined(TDEBUG)
-  unsigned char pin_led_test = 13;
-  unsigned char pin_sen_pir_test = 7;
-  unsigned int  sen_pir_test = 0; // PIR sense value
-#endif
+unsigned char pin_led_test = 13;
+unsigned char pin_sen_pir_test = 7;
+unsigned int  sen_pir_test = 0; // PIR sense value
 
 // Variables you might want to change
-unsigned char pin_led_red = 9;     // Red LED pin
-unsigned char pin_led_green = 10;  // Green LED pin
-unsigned char pin_led_uv = 11;     // UV LED pin
-unsigned char pin_face_sen = 14;  // Face sensor pin
-unsigned long delay_red_green_min = 4000; // minimum time red/green is on
+unsigned char pin_led_red = 9;      // Red LED pin
+unsigned char pin_led_green = 10;   // Green LED pin
+unsigned char pin_led_uv = 11;      // UV LED pin
+unsigned char pin_face_sen = 14;    // Face sensor pin
+unsigned long delay_red_green_min = 5000; // minimum time red/green is on
 unsigned long delay_red_green_max = 10000; // maximum time red/green is on
-unsigned long delay_fade = 2000; // Fade between red/green/uv
+unsigned long delay_fade = 2000;    // Fade between red/green/uv
 unsigned long delay_led_cross = 10; // Minimum amount of time to increment 1 crossfade value in ms
-unsigned char random_uv_led_pool = 5; // 1 out of every xx cycles, light the UV LED instead
-unsigned int sen_light_min = 100; // Minimum value for light sensor
-unsigned char loop_delay = 50; // Default loop delay in ms
+unsigned long random_uv_led_pool = 2000; // 1 out of every xx seconds, light the UV LED instead
+unsigned char uv_led_on_time = 150; // Time to flash UV LED
+unsigned char uv_led_on_buffer = 0; // Time to turn off all other LEDS before/after UV LED
+unsigned int sen_light_min = 900;   // Minimum value for light sensor
+unsigned char loop_delay = 2;      // Default loop delay in ms
 
 // Variables you probably don't want to change
 unsigned long ctr_time; // Time since boot in ms
 unsigned long ctr_time_prv; // Time of the start of the previous loop
 
 unsigned char pin_led_cross_on = pin_led_red;  // Crossfade on/off value
-unsigned char pin_led_cross_off = pin_led_green;     // Crossfade on/off value
+unsigned char pin_led_cross_off = pin_led_green; // Crossfade on/off value
 unsigned long led_level_change = 0; // Value to change for LED
 unsigned long led_level_change_prv = 0; // Last time the LED level changed
 
@@ -45,7 +46,7 @@ int led_cross_on = 0; // Crossfade level for LED turning on
 int led_cross_off = 255; // Crossfade level for LED turning off
 
 unsigned int sen_light = 0; // Light sensor absolute value
-unsigned char sen_light_norm = 0; // Normalized value of light sensor output
+unsigned char light_on_brightness = 255; // Max brightness of the LEDs by default (0-255))
 unsigned char led_bright_red = 0; // Normalized value of LED brightness
 unsigned char led_bright_green = 0; // Normalized value of LED brightness
 unsigned char led_bright_uv = 0; // Normalized value of LED brightness
@@ -73,25 +74,27 @@ int pir_check(int pin = 0) {
   } else {
     digitalWrite(pin_led_test,HIGH);
   }
-  Serial.print("pir=");
-  Serial.println(val);
-  delay(100);
+  if (TDEBUG >= 2) {
+      Serial.print("pir=");
+      Serial.println(val);
+      delay(100);
+  }
 }
 
 
 void setup() {
   randomSeed(analogRead(0));
-  // Turn on Green LED initially
+  // Turn on Green LED
   delay_red_green_random = random(delay_red_green_min, delay_red_green_max);
   pin_led_cross_off = pin_led_red;
   ctr_red = 1;
   time_led_start = millis() - delay_red_green_random - 1; // Turn an LED on right away
 
-#if defined(TDEBUG)
+if (TDEBUG >= 1) {
   Serial.begin(9600);
   pinMode(pin_sen_pir_test, INPUT);
   pinMode(pin_led_test, OUTPUT);
-#endif
+}
 }
 
 void loop() {
@@ -103,66 +106,60 @@ void loop() {
   delay(loop_delay);
 }
 
-// Check analog light sensor to set LED brightness levels
-void checkLightLevels(int sen_pin = 0) {
-  sen_light = analogRead(sen_pin);
-
-#if defined(TDEBUG)
-  Serial.print("lignt_sen=");
-  Serial.println(sen_light);
-#endif
-  // Map light sensor to from 0 to 900 to 0 to 255 q
-  if (sen_light == 0) { // Set minimum sensor value
-    sen_light = sen_light_min;
-  }
-  sen_light_norm = map(sen_light, 0, 900, 0, 255);
-  // Set LED value multipliers
-  led_bright_red = sen_light_norm * 2;
-  led_bright_green = sen_light_norm * 1;
-  led_bright_uv = sen_light_norm * 1;
-}
-
 void panel_checkFade() { // See if we should fade to another LED for the panel
-  led_on_time = ctr_time - time_led_start;
-  if ( led_on_time > delay_red_green_random) {
+	led_on_time = ctr_time - time_led_start;
+	// See if we need to flash the UV LED
+	if (random(random_uv_led_pool) == 1) { // Randomly display UV LED
+		// Turn off the other LEDs
+//		 analogWrite(pin_led_cross_on, 0);
+//		 analogWrite(pin_led_cross_off, 0);
+		 delay(uv_led_on_time);
+		 // Turn on UV LED
+		 analogWrite(pin_led_uv, led_bright_uv);
+		 delay(uv_led_on_time);
+		 // Turn off UV LED
+		 analogWrite(pin_led_uv, 0);
+		 delay(uv_led_on_time);
+//		 analogWrite(pin_led_cross_on, led_cross_on);
+//		 analogWrite(pin_led_cross_off, led_cross_off);
+		 ctr_uv++;
+	}
+  
+  if ( led_on_time > delay_red_green_random) { // Time to switch to the alternate LED
     delay_red_green_random = random(delay_red_green_min, delay_red_green_max);
     time_led_start = millis();
 		
-    // See which LED to turn on
     if ( ctr_red == 0 && ctr_green > 1000) { // Counter rolled over, reset counters
       ctr_green = 0;
       ctr_red = 1;
     }
-
+		
     pin_led_cross_off = pin_led_cross_on; // Previous pin that was on
+		// Set relative brightness for the LEDs
+		led_bright_red = light_on_brightness * 1;
+		led_bright_green = light_on_brightness * 1;
+	  led_bright_uv = light_on_brightness * 1;
 
-    checkLightLevels(pin_sen_light); // See what ambient light we have
-    if (random(random_uv_led_pool) == 1) { // Randomly display UV LED
-      pin_led_cross_on = pin_led_uv;
-      led_cross_off = led_bright; // Set cross-fade max value for LED turning off
-      led_bright = led_bright_uv;
-      ctr_uv++;
-    } else {  // Not lighting UV LED, light another one...
-      if ( ctr_red > ctr_green) {
-        pin_led_cross_on = pin_led_green;
-        led_cross_off = led_bright; // Set cross-fade max value for LED turning off
-        led_bright = led_bright_green;
-        ctr_green++;
-      } else {
-        pin_led_cross_on = pin_led_red;
-        led_cross_off = led_bright; // Set cross-fade max value for LED turning off
-        led_bright = led_bright_red;
-        ctr_red++;
-      }
-    }
+		if ( ctr_red > ctr_green) {
+			pin_led_cross_on = pin_led_green;
+			led_cross_off = led_bright; // Set cross-fade max value for LED turning off
+			led_bright = led_bright_green;
+			ctr_green++;
+		} else {
+			pin_led_cross_on = pin_led_red;
+			led_cross_off = led_bright; // Set cross-fade max value for LED turning off
+			led_bright = led_bright_red;
+			ctr_red++;
+		}
+
     led_cross_on = 0;  // Set cross-fade value to 0 for the LED turning on
     led_level_change_prv = millis();
-#if defined(TDEBUG)
-    Serial.print("led_bright= ");
-    Serial.println(led_bright);
-    Serial.println(led_bright_red);
-    Serial.println(led_bright_green);
-#endif
+		if (TDEBUG >= 1) {
+			Serial.print("led_bright= ");
+			Serial.println(led_bright);
+			Serial.println(led_bright_red);
+			Serial.println(led_bright_green);
+		}
 
   } else { // Not turning a new LED on, see if we need to cross-fade
     if (led_cross_on < led_bright || led_cross_off != 0) { // LED to turn on is not yet at full brightness, increase by 1 level
@@ -183,19 +180,23 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
       analogWrite(pin_led_cross_on, led_cross_on);
       analogWrite(pin_led_cross_off, led_cross_off);
       // print the results to the serial monitor:
-  #if defined(TDEBUG)
-      Serial.print("ledon=");
-      Serial.print(led_cross_on);
-      Serial.print("\tledoff=");
-      Serial.print(led_cross_off);
-      Serial.print("\tledlevel=");
-      Serial.print(led_level_change);
-      Serial.print("\t pin=");
-      Serial.println(pin_led_cross_on);
-  #endif
+			if (TDEBUG >= 1) {
+				Serial.print("ledon=");
+				Serial.print(led_cross_on);
+				Serial.print("\tledoff=");
+				Serial.print(led_cross_off);
+				Serial.print("\tledlevel=");
+				Serial.print(led_level_change);
+				Serial.print("\t pin=");
+				Serial.println(pin_led_cross_on);
+				delay(200);
+			}
     }
 
   }
 
 }
+
+
+
 
