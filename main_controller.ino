@@ -2,11 +2,6 @@
  BM 2015 Chuckie Pinball by TonyOxide
  This code is in the public domain.
  Version 0.02
-
- Photoresistors being used are about 0 - 800 on the analog input
- A normal room is about 100, dark room about 30 and it will go to 0
- Use a 10k resistor to ground with them to have them work properly
-
  */
 
 // Turn debugging on or off...
@@ -98,11 +93,19 @@ if (TDEBUG >= 1) {
 }
 
 void loop() {
+	// Housekeeping
   ctr_time_prv = ctr_time; // Set the previous value of the timer
   ctr_time = millis();
+	time_loop_delay = ctr_time - ctr_time_prv; // Delay since the last loop
   ctr_loop++;
+
+	// See what we should do with the illumination LEDs
   panel_checkFade();
+	
+	// See what is happening with the PIR sensors
   sen_pir_test = pir_check(pin_sen_pir_test);
+	
+	// Delay at the end of the loop (optional)
   delay(loop_delay);
 }
 
@@ -113,13 +116,13 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
 		// Turn off the other LEDs
 //		 analogWrite(pin_led_cross_on, 0);
 //		 analogWrite(pin_led_cross_off, 0);
-		 delay(uv_led_on_time);
+		 delay(uv_led_on_buffer);
 		 // Turn on UV LED
 		 analogWrite(pin_led_uv, led_bright_uv);
 		 delay(uv_led_on_time);
 		 // Turn off UV LED
 		 analogWrite(pin_led_uv, 0);
-		 delay(uv_led_on_time);
+		 delay(uv_led_on_buffer);
 //		 analogWrite(pin_led_cross_on, led_cross_on);
 //		 analogWrite(pin_led_cross_off, led_cross_off);
 		 ctr_uv++;
@@ -164,6 +167,7 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
   } else { // Not turning a new LED on, see if we need to cross-fade
     if (led_cross_on < led_bright || led_cross_off != 0) { // LED to turn on is not yet at full brightness, increase by 1 level
       // See how many levels to change the LED
+			
       led_level_change = (millis() - led_level_change_prv) / delay_led_cross;
       if (led_level_change == 0) { // Haven't waited long enough... return
         return;
