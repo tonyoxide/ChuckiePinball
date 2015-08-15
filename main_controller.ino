@@ -39,29 +39,28 @@
 
 char TDEBUG = 0;
 
-unsigned char pin_led_test = 13;
-unsigned char pin_sen_pir_test = 7;
-unsigned int  sen_pir_test = 0; // PIR sense value
+#define pin_led_test 13
+#define pin_sen_pir_test 7
+unsigned int sen_pir_test = 0; // PIR sense value
 
 // Variables you might want to change
-unsigned char pin_led_red = 9;      // Red LED pin
-unsigned char pin_led_green = 10;   // Green LED pin
-unsigned char pin_led_uv = 11;      // UV LED pin
-unsigned char pin_face_sen = 14;    // Face sensor pin
-unsigned long delay_red_green_min = 5000; // minimum time red/green is on
-unsigned long delay_red_green_max = 10000; // maximum time red/green is on
-unsigned long delay_fade = 2000;    // Fade between red/green/uv
+#define pin_led_red 9      // Red LED pin
+#define pin_led_green 10   // Green LED pin
+#define pin_led_uv 11      // UV LED pin
+#define pin_face_sen 14    // Face sensor pin
+#define delay_red_green_min 5000 // minimum time red/green is on
+#define delay_red_green_max 10000 // maximum time red/green is on
+#define delay_fade 2000    // Fade between red/green/uv
 float delay_led_cross = 600; // Minimum amount of time to increment 1 crossfade value in ms
-unsigned long random_uv_led_pool = 3000; // 1 out of every xx seconds, light the UV LED instead
-unsigned char uv_led_on = 850; // Time to flash UV LED
-unsigned char uv_led_on_buffer = 0; // Time to turn off all other LEDS before/after UV LED
-unsigned long uv_led_on_time = 0; // Time that the UV LED was turned on
-unsigned int sen_light_min = 900;   // Minimum value for light sensor
-unsigned char loop_delay = 2;      // Default loop delay in ms
+#define random_uv_led_pool 3000 // 1 out of every xx seconds, light the UV LED instead
+#define uv_led_on 850 // Time to flash UV LED
+#define uv_led_on_buffer 0 // Time to turn off all other LEDS before/after UV LED
+#define loop_delay 2      // Default loop delay in ms
 
 // Variables you probably don't want to change
-unsigned long ctr_time; // Time since boot in ms
-unsigned long ctr_time_prv; // Time of the start of the previous loop
+unsigned long uv_led_on_time = 0; // Time that the UV LED was turned on
+unsigned long ctr_time = 0; // Time since boot in ms
+unsigned long ctr_time_prv = 0; // Time of the start of the previous loop
 unsigned int time_loop_delay = 0; // Delay of last loop run
 unsigned char pin_led_cross_on = pin_led_red;  // Crossfade on/off value
 unsigned char pin_led_cross_off = pin_led_green; // Crossfade on/off value
@@ -69,7 +68,6 @@ float led_level_change = 0; // Value to change for LED
 unsigned long led_level_change_prv = 0; // Last time the LED level changed
 unsigned long led_level_change_start = 0; // Fade start time
 
-unsigned char pin_sen_light = A5;  // Light sensor pin
 int led_cross_on = 0; // Crossfade level for LED turning on
 int led_cross_off = 255; // Crossfade level for LED turning off
 
@@ -94,11 +92,11 @@ unsigned int ctr_loop = 0;  // Number of loops
 unsigned long time_led_start = 0;  // Time LED went on
 
 //CD4067B variables
-unsigned char muxInputPin = A5;    // mux input to arduino
-unsigned char muxPinD = A4;     //mux Address line
-unsigned char muxPinC = A3;     //mux Address line
-unsigned char muxPinB = A2;     //mux Address line
-unsigned char muxPinA = A1;     //mux Address line
+#define muxInputPin A5    // mux input to arduino
+#define muxPinD A4     //mux Address line
+#define muxPinC A3     //mux Address line
+#define muxPinB A2     //mux Address line
+#define muxPinA A1     //mux Address line
 unsigned char muxResult = 0;  //Current mux line result
 unsigned char totalFingersCounted = 0;
 unsigned char lastFingerCount = 0;
@@ -176,7 +174,7 @@ void loop() {
   ctr_loop++;
 
   // See what we should do with the illumination LEDs
-  panel_checkFade();	
+  panel_checkFade();
 
   // See what is happening with the PIR sensors
   sen_pir_test = pir_check(pin_sen_pir_test);
