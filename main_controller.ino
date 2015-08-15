@@ -7,15 +7,37 @@
  v 0.03 Adding CD4067 Driver - main program flow
  */
 
+#define TRUE  1
+#define FALSE 0
+
+//State Machine
+#define NO_PLAYER_DETECTED 0
+#define PLAYER_DETECTED 1
+#define COUNTING_PLAYER_FINGERS 2
+#define ALIGN_PLAYER_TO_MIRROR 3
+#define WAIT_FOR_PLAYER_TO_LEAVE 4
+
+//Pinout
+#define PIN_MIRROR_LIGHTS 6
+#define PIN_SOLENOID 4
+
+//Distance
+#define DISTANCE_SENSOR_FLOOR 60
+#define DISTANCE_SENSOR_CEILING 200
+
+#define FINGER_DEBOUCE_LENGTH 300 //Abitrary - counting in loop cycles right now
+
+#define PLAYER_DISTANCE_TIMEOUT_LENGTH 300
+
 // Turn debugging on or off...
 // Don't even try to use #if syntax, the IDE breaks if you do
 // Bitmask 
 // 1 = LEDs
 // 2 = PIRs
 // 4 = FINGERs
-// 8 = 
+// 8 = MachineState
 
-char TDEBUG = 1;
+char TDEBUG = 0;
 
 unsigned char pin_led_test = 13;
 unsigned char pin_sen_pir_test = 7;
@@ -79,12 +101,19 @@ unsigned char muxPinB = A2;     //mux Address line
 unsigned char muxPinA = A1;     //mux Address line
 unsigned char muxResult = 0;  //Current mux line result
 unsigned char totalFingersCounted = 0;
+unsigned char lastFingerCount = 0;
 
+
+//TCB380
+unsigned char soundFileActive = FALSE;
+unsigned char tcb380Active = 3;    //sound file output
 
 //User State Variables
+unsigned char machineState = NO_PLAYER_DETECTED; //Check define tablefor states
 unsigned char userInProximity = 0;
 unsigned int  userDistance = 0;
 unsigned int fingerDebounceCount = 0;
+unsigned int playerDetectedTimeout = 0;
 
 // This function looks for someone standing near the exhibit
 int pir_check(int pin = 0) {
@@ -118,15 +147,22 @@ void setup() {
   pinMode(muxPinD, OUTPUT);
   //mux input is analog
   pinMode(muxInputPin, INPUT);
-
+  
+  //Extra hardware
+  pinMode(PIN_MIRROR_LIGHTS, OUTPUT);
+  pinMode(PIN_SOLENOID, OUTPUT);
 
   //TCB380 Initilization
   Serial.begin(4800);
-  Serial.write(232);
+  //Serial.write(0xE0); //Set Volume 0xC8-E7
   delay(50);
+  pinMode(tcb380Active, INPUT);
+  
   led_test();
+  lightBoxTest();
+  solenoidTest();
+  
   if (TDEBUG == 1) {
-    Serial.begin(9600);
     pinMode(pin_sen_pir_test, INPUT);
     pinMode(pin_led_test, OUTPUT);
   }
@@ -140,47 +176,111 @@ void loop() {
   ctr_loop++;
 
   // See what we should do with the illumination LEDs
-  panel_checkFade();
-	
+  panel_checkFade();	
+
   // See what is happening with the PIR sensors
   sen_pir_test = pir_check(pin_sen_pir_test);
   
   //Scan the mux to count fingers
+  lastFingerCount = totalFingersCounted;
   totalFingersCounted = scanFingerSensors();
 
-  userInProximity = readFrontPIRSensor();
-  userDistance = readDistanceSensor();
-
-  //
-  if(fingerDebounceCount > 1000){
-    Serial.write(totalFingersCounted);
-    fingerDebounceCount = 0;
+  userInProximity = readFrontPIRSensor(); //userInProximity holds the PIR Sensor
+  userDistance = readDistanceSensor();  //userDistance is the distance!
+  
+  //Solenoid test
+  /*if(totalFingersCounted == 3){
+    digitalWrite(PIN_SOLENOID, HIGH);
+  }else{
+    digitalWrite(PIN_SOLENOID, LOW);
   }
-  fingerDebounceCount++;
   
-  //No user detected - Bark for attention
+  //Lightbox test
+  if(totalFingersCounted == 2){
+    digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
+  }else{
+    digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+  }*/
   
-  //If the front PIR detects movement
-  //Tell user to get closer and put fingers in
+  /*if(totalFingersCounted != lastFingerCount){
+    Serial.write(totalFingersCounted-1);
+  }*/
+  
+  //No user detected - Bark for attention  
+  
+  //Finger count routine begins - overrides PIR   
+  if((totalFingersCounted > 0) &&
+     (machineState == NO_PLAYER_DETECTED) ||
+     (machineState == PLAYER_DETECTED))
+  {
+    machineState = COUNTING_PLAYER_FINGERS;
+  }
+  
+  //Debounce finger input sensors
+  //until the number of fingers is stable
+  if((machineState == COUNTING_PLAYER_FINGERS) &&
+      (totalFingersCounted == lastFingerCount))
+  {
+    fingerDebounceCount++;
+  }
+  
+  //Finger debounce complete - Speak the count
+  if(fingerDebounceCount > FINGER_DEBOUCE_LENGTH){
+    Serial.write(totalFingersCounted-1);
+    //soundFileActive = digitalRead(tcb380Active);
+    //Serial.println(soundFileActive);    
+    fingerDebounceCount = 0;
+    //machineState = NO_PLAYER_DETECTED;
+    //Fire solenoid
+  }
+    
+  //If the front PIR detects movement OR the distance sensor is below threshold
+  if((machineState == NO_PLAYER_DETECTED) && userInProximity){
+      machineState = PLAYER_DETECTED;
+  }
+  
+  
+  //Player in the area - Bark at them to come over
+  if(machineState == PLAYER_DETECTED){
+      playerDetectedTimeout = PLAYER_DISTANCE_TIMEOUT_LENGTH;
+  }
+  
+  //Count until timeout or user overrides by putting fingers in! 
+  if(playerDetectedTimeout > 0){
+      playerDetectedTimeout--; //Count down until timeout is complete
+      if(playerDetectedTimeout == 0){ //Timeout is complete 
+        machineState = NO_PLAYER_DETECTED;
+      }
+  }
+  
+  /*if((userInProximity == TRUE) && !soundFileActive){
+    //Tell user to get closer and put fingers in
+    Serial.write(1);
+  }*/
+  
   //Add timer to call the user a spoilsport if they won't come
   
-  //Finger count routine begins - overrides PIR
-   //Debounce finger input sensors and speak count
-   //Fire solenoid at random interval
- 
   //Begin Magic Mirror routine
-   //Guide user to optimal distance
-   //If above threshold - speak "closer"
-   //If below threshold - speak "farther away" 
-   //Fire Mirror lighting
-   //Laugh
-   //Instruct user to find their true selves
+    //Guide user to optimal distance
+    //If above threshold - speak "closer"
+    //If below threshold - speak "farther away" 
+    //Fire Mirror lighting
+    //Laugh
+    //Instruct user to find their true selves
   
   //Timer for user to leave
   //Tell them to scram on timeout
   //Back to  outer loop
   
+  
+  //Serial.println(userDistance);
+  if(TDEBUG & 8){
+    Serial.println(machineState);
+  }
+  
   //Check Rear PIR - yell at hooligans behind the machine
+  
+  digitalWrite(PIN_SOLENOID, LOW); //Safety - Always deactivate the solenoid
   
   // Delay at the end of the loop (optional)
   delay(loop_delay);
@@ -483,3 +583,14 @@ void led_test() { // Startup test for LEDs
 	
 }
 
+void lightBoxTest(){
+  digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
+  delay(1000);
+  digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+}
+
+void solenoidTest(){
+  digitalWrite(PIN_SOLENOID, HIGH);
+  delay(500);
+  digitalWrite(PIN_SOLENOID, LOW);
+}
