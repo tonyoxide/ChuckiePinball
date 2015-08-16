@@ -29,6 +29,91 @@
 
 #define PLAYER_DISTANCE_TIMEOUT_LENGTH 300
 
+// Defines for all of the sound files
+//1,01,One
+#define SND_1 1
+//2,02,Two
+#define SND_2 2
+//3,03,Three
+#define SND_3 3
+//4,04,Four
+#define SND_4 4
+//5,05,Five
+#define SND_5 5
+//6,06,Six
+#define SND_6 6
+//7,07,Seven
+#define SND_7 7
+//8,08,Eight
+#define SND_8 8
+//9,09,Nine
+#define SND_9 9
+//10,0A,Ten
+#define SND_10 10
+//11,0B,Nine! Nine! Nine! Nine!
+#define SND_NINE 11
+//12,0C,Ha ha ha ha ha!
+#define SND_HAHA 12
+//13,0D,Ho Ho Ho Ho!
+#define SND_HOHO 13
+//14,0E,Gotcha!
+#define SND_GOTCHA 14
+//15,0F,Wooo Wooo Wooo!
+#define SND_WOO 15
+//16,10,Sacre Bleu!
+#define SND_SACRE 16
+//17,11,Bon Ben! (bone-baaa)  [OK well]
+#define SND_BON 17
+//18,12,Quelle Surprise! (Kelle sur preeze!) 
+#define SND_QUELLE 18
+//19,13,Look at THAT one!
+#define SND_LOOKAT 19
+//20,14,"Come on over, it's YOUR lucky day!"
+#define SND_COMEOVER 20
+//21,15,Wooo! Tu est Belle!
+#define SND_WOO 21
+//22,16,"Hey fabulous, come over here!"
+#define SND_HEY 22
+//23,17,Find out who you really are!
+#define SND_FIND 23
+//24,18,"Two faces have I, one is truth and one a lie!"
+#define SND_TWOFACE 24
+//25,19,I've been waiting for you.....
+#define SND_WAITING 25
+//26,1A,"Come over here, let me count your fingers!"
+#define SND_COUNT 26
+//27,1B,Put your fingers in the little holes.
+#define SND_FINGERS 27
+//28,1C,The holes on the sides!
+#define SND_HOLES 28
+//29,1D,You must be scared! (If hesitation)
+#define SND_SCARED 29
+//30,1E,"OK, done with counting! (If total counting time exceeds 30 seconds)"
+#define SND_DONECOUNT 30
+//31,1F,Now look into my magic mirror.
+#define SND_LOOKMIRROR 31
+//32,20,"Come a little closer, so your face fits in."
+#define SND_COMECLOSER 32
+//33,21,Not THAT close!
+#define SND_TOOCLOSE 33
+//34,22,Perfect. Hold it!
+#define SND_HOLDIT 34
+//35,23,You look great!
+#define SND_LOOKGREAT 35
+//36,24,Voo Voo Voo Voo!
+#define SND_VOO 36
+//37,25,All done with the mirror. (if they are still there 15 seconds later)
+#define SND_DONEMIRROR 37
+//38,26,Now come inside and find your TRUE identity! 
+#define SND_COMEINSIDE 38
+//39,27,"Now come in, see yourself as you see others!"
+#define SND_COMEIN 39
+
+// Create arrays for the sound file types
+int asnd_laugh[] = {11,12,13,14};
+int asnd_attract[] = {14,15,16,17,18,19.20,21,22,23,24,25};
+int asnd_leave[] = {38,39};
+
 // Turn debugging on or off...
 // Don't even try to use #if syntax, the IDE breaks if you do
 // Bitmask 
