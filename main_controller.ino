@@ -281,7 +281,7 @@ void loop() {
 
   // See what we should do with the illumination LEDs
   panel_checkFade();
-
+	
   //Scan the mux to count fingers
   lastFingerCount = totalFingersCounted;
 
@@ -340,7 +340,7 @@ void loop() {
     whackSolenoid();
   }
   
-  if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR)) && timeToLaugh)){
+  if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR) && timeToLaugh){
     laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
     if(laughPlayed){
       timeToLaugh = FALSE;
