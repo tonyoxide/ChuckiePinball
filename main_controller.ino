@@ -792,7 +792,27 @@ void flashMirrorLight(){
 }
 
 void debugSay(unsigned int number) { // Say each digit of a number
-	// Wait until we aren't saying anything
+	// Break the number into multiple parts
+	uint8_t ones,tens,hund,thou,tthou;
+
+	tthou = number/10000;
+	if (tthou != 0) {
+		playDigit(tthou);
+	}
+	thou = number/1000;
+	if (tthou != 0 && thou != 0) {
+		playDigit(thou);
+	}
+	hund = number/100;
+	if (hund != 0 && tthou != 0 && thou != 0) {
+		playDigit(hund);
+	}
+	tens = number/10;
+	if (tens != 0 && hund != 0 && tthou != 0 && thou != 0) {
+		playDigit(tens);
+	}
+	ones = number-(tthou*10000+thou*1000+hund*100+tens*10);
+	playDigit(ones);
 }
 
 void playDigit(unsigned char number) { // Say a single digit
@@ -839,9 +859,8 @@ void playDigit(unsigned char number) { // Say a single digit
 			break;
 	}	
 	// Wait for us to be finished playing the last sound
-		while () {
-			
+		while (digitalRead(tcb380Active) == 0) { // Playing a sound, wait
+			delay(10);
 		}
-
-		playFile(fileNumber)
+		playFile(fileNumber);
 }
