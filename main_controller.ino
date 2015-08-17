@@ -114,7 +114,6 @@ int asnd_leave[] = {
 //Distance
 #define DISTANCE_SENSOR_TO_FAR 100
 #define DISTANCE_SENSOR_TO_CLOSE 120
-
 #define FINGER_DEBOUCE_LENGTH 250 //counting in loop cycles right now
 
 #define PLAYER_DISTANCE_TIMEOUT_LENGTH 300 //counting in loop cycles right now
@@ -132,8 +131,6 @@ int asnd_leave[] = {
 char TDEBUG = 0;
 
 #define pin_led_test 13
-#define pin_sen_pir_test 7
-unsigned int sen_pir_test = 0; // PIR sense value
 
 // Variables you might want to change
 #define pin_led_red 9      // Red LED pin
@@ -270,11 +267,8 @@ void setup() {
   solenoidTest();
 
   if (TDEBUG == 1) {
-    pinMode(pin_sen_pir_test, INPUT);
     pinMode(pin_led_test, OUTPUT);
   }
-
-
 }
 
 void loop() {
@@ -286,9 +280,6 @@ void loop() {
 
   // See what we should do with the illumination LEDs
   panel_checkFade();
-
-  // See what is happening with the PIR sensors
-  sen_pir_test = pir_check(pin_sen_pir_test);
 
   //Scan the mux to count fingers
   lastFingerCount = totalFingersCounted;
@@ -771,7 +762,6 @@ unsigned char playFile(unsigned char fileNumber, unsigned char delaySinceLastPla
   }
   return FALSE;
 }
-
 
 void whackSolenoid(){
 
