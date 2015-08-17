@@ -304,7 +304,6 @@ void loop() {
 
   //update the file active states
   lastSoundFileActiveState = soundFileActive;
-  soundFileActive = !digitalRead(tcb380Active); //Active low from mp3 module while sound is play pin low
 
   //Update time when the busy line transitions to file inactive
   if(soundFileActive != lastSoundFileActiveState && !soundFileActive){
@@ -314,7 +313,7 @@ void loop() {
   //No user detected - Bark for attention  
   selectRandomTaunt = random(sizeof(asnd_attract));
   if(machineState == NO_PLAYER_DETECTED){
-    playFile(selectRandomTaunt, 100);
+    playFile(asnd_attract[selectRandomTaunt], 1000);
   }
 
   //Finger count routine begins - overrides PIR   
@@ -349,7 +348,7 @@ void loop() {
     whackSolenoid();
   }
   
-  if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR)) && timeToLaugh)){
+  if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR) && timeToLaugh){
     laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
     if(laughPlayed){
       timeToLaugh = FALSE;
@@ -749,20 +748,21 @@ void solenoidTest(){
 }
 
 
-unsigned char readyToPlayNextMP3(unsigned int timeInDeciseconds = 0){
+unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
   unsigned char result;
-  if((timeLastFileCompleted != 0) &&
-    ((ctr_time - timeLastFileCompleted) > (timeInDeciseconds*100)) &&
-    !soundFileActive){
+
+  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > (timeInMilliseconds)) && !soundFileActive){
     return TRUE;
   }
   return FALSE;
 } 
 
 //Return true if file plays, else false
-unsigned char playFile(unsigned char fileNumber, unsigned char delaySinceLastPlayed){
+unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPlayed){
   unsigned char error = FALSE;
 
+  soundFileActive = !digitalRead(tcb380Active); //Active low from mp3 module while sound is play pin low  
+ 
   //Don't send non-file commands or random file commands
   if((fileNumber > 199) || (fileNumber == 0)){
     return FALSE;
@@ -772,6 +772,7 @@ unsigned char playFile(unsigned char fileNumber, unsigned char delaySinceLastPla
   if(readyToPlayNextMP3(delaySinceLastPlayed)){  
     Serial.write(fileNumber);
     timeLastFileCompleted = 0; //update timer
+    
     return TRUE;
   }
   return FALSE;
