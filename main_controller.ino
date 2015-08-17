@@ -114,6 +114,7 @@ unsigned char asnd_leave[] = {
 //Distance
 #define DISTANCE_SENSOR_TO_FAR 100
 #define DISTANCE_SENSOR_TO_CLOSE 120
+
 #define FINGER_DEBOUCE_LENGTH 250 //counting in loop cycles right now
 
 #define PLAYER_DISTANCE_TIMEOUT_LENGTH 300 //counting in loop cycles right now
@@ -131,6 +132,8 @@ unsigned char asnd_leave[] = {
 unsigned char TDEBUG = 0;
 
 #define pin_led_test 13
+#define pin_sen_pir_test 7
+unsigned int sen_pir_test = 0; // PIR sense value
 
 // Variables you might want to change
 #define pin_led_red 9      // Red LED pin
@@ -219,6 +222,28 @@ unsigned char distanceAchievedPlayed = FALSE;
 unsigned char nowLookIntoMyMirrorPlayed = FALSE;
 unsigned char selectRandomTaunt = 0;
 unsigned char selectRandomLeavePhrase = 0;
+<<<<<<< HEAD
+=======
+unsigned char leaveFilePlayed = FALSE;
+
+// This function looks for someone standing near the exhibit
+int pir_check(int pin = 0) {
+  int val = 0;
+  val = digitalRead(pin);
+  if (val == 0) {
+    digitalWrite(pin_led_test,LOW);
+  } 
+  else {
+    digitalWrite(pin_led_test,HIGH);
+  }
+  if (TDEBUG & 2) {
+    Serial.print("pir=");
+    Serial.println(val);
+    delay(10);
+  }
+}
+
+>>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
 
 void setup() {
   randomSeed(analogRead(0));
@@ -251,8 +276,11 @@ void setup() {
   solenoidTest();
 
   if (TDEBUG == 1) {
+    pinMode(pin_sen_pir_test, INPUT);
     pinMode(pin_led_test, OUTPUT);
   }
+
+
 }
 
 void loop() {
@@ -264,7 +292,10 @@ void loop() {
 
   // See what we should do with the illumination LEDs
   panel_checkFade();
-	
+
+  // See what is happening with the PIR sensors
+  sen_pir_test = pir_check(pin_sen_pir_test);
+
   //Scan the mux to count fingers
   lastFingerCount = totalFingersCounted;
 
@@ -362,10 +393,10 @@ void loop() {
     
       //If above threshold - speak "closer"
       if(userDistance < DISTANCE_SENSOR_TO_FAR){
-        playFile(0x20, 0);
+        playFile(0x21, 0);
       }
       else if(userDistance > DISTANCE_SENSOR_TO_CLOSE){
-        playFile(0x21, 0);
+        playFile(0x20, 0);
       }
       else{ //User is the right distance
         distanceAchievedPlayed = playFile(0x22, 0);
@@ -391,6 +422,15 @@ void loop() {
 
   if(machineState == WAIT_FOR_PLAYER_TO_LEAVE){
     selectRandomLeavePhrase = random(sizeof(asnd_attract));
+<<<<<<< HEAD
+=======
+    leaveFilePlayed = playFile(asnd_leave[selectRandomLeavePhrase], 1000);
+    
+    if(leaveFilePlayed){
+      machineState = NO_PLAYER_DETECTED;
+      leaveFilePlayed = FALSE;
+    }
+>>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
   }
 
   //Timer for user to leave
@@ -718,7 +758,7 @@ void lightBoxTest(){
 
 void solenoidTest(){
   digitalWrite(PIN_SOLENOID, HIGH);
-  delay(500);
+  delay(700);
   digitalWrite(PIN_SOLENOID, LOW);
 }
 
@@ -726,8 +766,12 @@ void solenoidTest(){
 unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
   unsigned char result;
 
+<<<<<<< HEAD
   if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > (timeInMilliseconds)) && !soundFileActive){
     
+=======
+  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > timeInMilliseconds) && !soundFileActive){
+>>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
     if(TDEBUG & 16){
       Serial.println('timer : %l', ctr_time);
       Serial.println('time last completed: %l', timeLastFileCompleted);
@@ -759,6 +803,7 @@ unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPla
   return FALSE;
 }
 
+
 void whackSolenoid(){
 
   if((ctr_time -  solenoidTimer) > 200 && (ctr_time -  solenoidTimer) < 400){
@@ -773,24 +818,25 @@ void whackSolenoid(){
 }
 
 void flashMirrorLight(){
-  if((ctr_time -  mirrorLightTimer) < 200){
+  if((ctr_time -  mirrorLightTimer) < 1200){
     digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
   }
-  else if((ctr_time -  mirrorLightTimer) < 400){
+  else if((ctr_time -  mirrorLightTimer) < 1400){
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
   }
-  else if((ctr_time -  mirrorLightTimer) < 800){
+  else if((ctr_time -  mirrorLightTimer) < 1800){
     digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
   }
-  else if((ctr_time -  mirrorLightTimer) < 1200){
+  else if((ctr_time -  mirrorLightTimer) < 2200){
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
   }else{
     mirrorLightTimer = 0;
-    machineState = NO_PLAYER_DETECTED;
+    machineState = WAIT_FOR_PLAYER_TO_LEAVE;
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
   }
 }
 
+<<<<<<< HEAD
 void debugSay(unsigned long number) { // Say each digit of a number
 	// Break the number into multiple parts
 	uint8_t ones,tens,hund,thou,tthou;
@@ -864,3 +910,6 @@ void playDigit(unsigned char number) { // Say a single digit
 		}
 		playFile(fileNumber);
 }
+=======
+
+>>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
