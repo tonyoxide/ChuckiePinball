@@ -907,7 +907,10 @@ void playDigit(unsigned char number) { // Say a single digit
 	// Wait for us to be finished playing the last sound
 		while (digitalRead(tcb380Active) == 0) { // Playing a sound, wait
 			delay(10);
+			digitalWrite(pin_led_test,HIGH);
 		}
+		digitalWrite(pin_led_test,LOW);
+		
 		playFile(fileNumber);
 }
 =======
