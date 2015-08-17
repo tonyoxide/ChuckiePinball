@@ -222,8 +222,6 @@ unsigned char distanceAchievedPlayed = FALSE;
 unsigned char nowLookIntoMyMirrorPlayed = FALSE;
 unsigned char selectRandomTaunt = 0;
 unsigned char selectRandomLeavePhrase = 0;
-<<<<<<< HEAD
-=======
 unsigned char leaveFilePlayed = FALSE;
 
 // This function looks for someone standing near the exhibit
@@ -243,7 +241,6 @@ int pir_check(int pin = 0) {
   }
 }
 
->>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
 
 void setup() {
   randomSeed(analogRead(0));
@@ -275,12 +272,13 @@ void setup() {
   lightBoxTest();
   solenoidTest();
 
+  pinMode(pin_led_test, OUTPUT);
   if (TDEBUG == 1) {
-    pinMode(pin_sen_pir_test, INPUT);
-    pinMode(pin_led_test, OUTPUT);
+    pinMode(pin_sen_pir_test, INPUT); 
   }
 
-
+  debugSay(74);
+  //playDigit(7);
 }
 
 void loop() {
@@ -320,6 +318,7 @@ void loop() {
   selectRandomTaunt = random(sizeof(asnd_attract));
   if(machineState == NO_PLAYER_DETECTED){
     playFile(asnd_attract[selectRandomTaunt], 10000);
+    //debugSay(583);
   }
 
   //Finger count routine begins - overrides PIR   
@@ -422,15 +421,12 @@ void loop() {
 
   if(machineState == WAIT_FOR_PLAYER_TO_LEAVE){
     selectRandomLeavePhrase = random(sizeof(asnd_attract));
-<<<<<<< HEAD
-=======
     leaveFilePlayed = playFile(asnd_leave[selectRandomLeavePhrase], 1000);
     
     if(leaveFilePlayed){
       machineState = NO_PLAYER_DETECTED;
       leaveFilePlayed = FALSE;
     }
->>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
   }
 
   //Timer for user to leave
@@ -766,12 +762,7 @@ void solenoidTest(){
 unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
   unsigned char result;
 
-<<<<<<< HEAD
-  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > (timeInMilliseconds)) && !soundFileActive){
-    
-=======
   if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > timeInMilliseconds) && !soundFileActive){
->>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
     if(TDEBUG & 16){
       Serial.println('timer : %l', ctr_time);
       Serial.println('time last completed: %l', timeLastFileCompleted);
@@ -836,8 +827,7 @@ void flashMirrorLight(){
   }
 }
 
-<<<<<<< HEAD
-void debugSay(unsigned long number) { // Say each digit of a number
+void debugSay(unsigned int number) { // Say each digit of a number
 	// Break the number into multiple parts
 	uint8_t ones,tens,hund,thou,tthou;
 
@@ -846,15 +836,15 @@ void debugSay(unsigned long number) { // Say each digit of a number
 		playDigit(tthou);
 	}
 	thou = number/1000;
-	if (tthou != 0 && thou != 0) {
+	if ((tthou != 0) || (thou != 0)) {
 		playDigit(thou);
 	}
 	hund = number/100;
-	if (hund != 0 && tthou != 0 && thou != 0) {
+	if ((hund != 0) || (tthou != 0) || (thou != 0)) {
 		playDigit(hund);
 	}
 	tens = number/10;
-	if (tens != 0 && hund != 0 && tthou != 0 && thou != 0) {
+	if ((tens != 0) || (hund != 0) || (tthou != 0) || (thou != 0)) {
 		playDigit(tens);
 	}
 	ones = number-(tthou*10000+thou*1000+hund*100+tens*10);
@@ -904,12 +894,11 @@ void playDigit(unsigned char number) { // Say a single digit
 			fileNumber = SND_9;
 			break;
 	}	
-	// Wait for us to be finished playing the last sound
-		while (digitalRead(tcb380Active) == 0) { // Playing a sound, wait
-			delay(10);
-		}
-		playFile(fileNumber);
+        // Wait for us to be finished playing the last sound
+        while (digitalRead(tcb380Active) == 0) { // Playing a sound, wait
+            delay(10);
+            digitalWrite(pin_led_test,HIGH);
+        }
+        digitalWrite(pin_led_test,LOW);
+        playFile(fileNumber, 0);
 }
-=======
-
->>>>>>> 50166999b4cc3f331e109df36e28684e86de95b6
