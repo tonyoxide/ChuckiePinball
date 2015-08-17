@@ -220,6 +220,7 @@ unsigned char timeToLaugh = FALSE;
 unsigned char laughPlayed = FALSE;
 unsigned char distanceAchievedPlayed = FALSE;
 unsigned char nowLookIntoMyMirrorPlayed = FALSE;
+unsigned char selectRandomTaunt = 0;
 
 // This function looks for someone standing near the exhibit
 int pir_check(int pin = 0) {
@@ -311,6 +312,10 @@ void loop() {
   }
 
   //No user detected - Bark for attention  
+  selectRandomTaunt = random(sizeof(asnd_attract));
+  if(machineState == NO_PLAYER_DETECTED){
+    playFile(selectRandomTaunt, 100);
+  }
 
   //Finger count routine begins - overrides PIR   
   if((totalFingersCounted > 0) &&
@@ -344,7 +349,7 @@ void loop() {
     whackSolenoid();
   }
   
-  if((*machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR)) && timeToLaugh){
+  if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR)) && timeToLaugh)){
     laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
     if(laughPlayed){
       timeToLaugh = FALSE;
