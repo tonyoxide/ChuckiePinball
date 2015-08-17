@@ -791,7 +791,7 @@ void flashMirrorLight(){
   }
 }
 
-void debugSay(unsigned int number) { // Say each digit of a number
+void debugSay(unsigned long number) { // Say each digit of a number
 	// Break the number into multiple parts
 	uint8_t ones,tens,hund,thou,tthou;
 
