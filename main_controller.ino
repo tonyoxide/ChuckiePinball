@@ -219,24 +219,6 @@ unsigned char distanceAchievedPlayed = FALSE;
 unsigned char nowLookIntoMyMirrorPlayed = FALSE;
 unsigned char selectRandomTaunt = 0;
 
-// This function looks for someone standing near the exhibit
-int pir_check(int pin = 0) {
-  int val = 0;
-  val = digitalRead(pin);
-  if (val == 0) {
-    digitalWrite(pin_led_test,LOW);
-  } 
-  else {
-    digitalWrite(pin_led_test,HIGH);
-  }
-  if (TDEBUG & 2) {
-    Serial.print("pir=");
-    Serial.println(val);
-    delay(10);
-  }
-}
-
-
 void setup() {
   randomSeed(analogRead(0));
   // Turn on Green LED
@@ -799,4 +781,59 @@ void flashMirrorLight(){
     machineState = NO_PLAYER_DETECTED;
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
   }
+}
+
+void debugSay(unsigned int number) { // Say each digit of a number
+	// Wait until we aren't saying anything
+}
+
+void playDigit(unsigned char number) { // Say a single digit
+	unsigned int fileNumber;
+	switch(number) {
+		case 0:
+			fileNumber = SND_10;
+			break;
+		
+		case 1:
+			fileNumber = SND_1;
+			break;
+		
+		case 2:
+			fileNumber = SND_2;
+			break;
+		
+		case 3:
+			fileNumber = SND_3;
+			break;
+		
+		case 4:
+			fileNumber = SND_4;
+			break;
+		
+		case 5:
+			fileNumber = SND_5;
+			break;
+		
+		case 6:
+			fileNumber = SND_6;
+			break;
+		
+		case 7:
+			fileNumber = SND_7;
+			break;
+		
+		case 8:
+			fileNumber = SND_8;
+			break;
+		
+		case 9:
+			fileNumber = SND_9;
+			break;
+	}	
+	// Wait for us to be finished playing the last sound
+		while () {
+			
+		}
+
+		playFile(fileNumber)
 }
