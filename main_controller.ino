@@ -88,11 +88,11 @@
 #define SND_COMEIN 39
 
 // Create arrays for the sound file types
-int asnd_laugh[] = {
+unsigned char asnd_laugh[] = {
   11,12,13,14};
-int asnd_attract[] = {
-  14,15,16,17,18,19.20,21,22,23,24,25};
-int asnd_leave[] = {
+unsigned char asnd_attract[] = {
+  14,15,16,17,18,19.20,21,22,23,24};
+unsigned char asnd_leave[] = {
   38,39};
 
 #define TRUE  1
@@ -128,7 +128,7 @@ int asnd_leave[] = {
 // 8 = MachineState
 // 16 = MP3Commands
 
-char TDEBUG = 0;
+unsigned char TDEBUG = 0;
 
 #define pin_led_test 13
 
@@ -218,6 +218,7 @@ unsigned char laughPlayed = FALSE;
 unsigned char distanceAchievedPlayed = FALSE;
 unsigned char nowLookIntoMyMirrorPlayed = FALSE;
 unsigned char selectRandomTaunt = 0;
+unsigned char selectRandomLeavePhrase = 0;
 
 void setup() {
   randomSeed(analogRead(0));
@@ -277,16 +278,17 @@ void loop() {
 
   //update the file active states
   lastSoundFileActiveState = soundFileActive;
+  soundFileActive = !digitalRead(tcb380Active); //Active low from mp3 module while sound is play pin low  
 
   //Update time when the busy line transitions to file inactive
-  if(soundFileActive != lastSoundFileActiveState && !soundFileActive){
+  if(soundFileActive != lastSoundFileActiveState && (soundFileActive == 0)){
     timeLastFileCompleted = ctr_time;
   }
 
   //No user detected - Bark for attention  
   selectRandomTaunt = random(sizeof(asnd_attract));
   if(machineState == NO_PLAYER_DETECTED){
-    playFile(asnd_attract[selectRandomTaunt], 1000);
+    playFile(asnd_attract[selectRandomTaunt], 10000);
   }
 
   //Finger count routine begins - overrides PIR   
@@ -332,7 +334,7 @@ void loop() {
   //If the front PIR detects movement OR the distance sensor is below threshold
   if((machineState == NO_PLAYER_DETECTED) && userInProximity){
     machineState = PLAYER_DETECTED;
-    playFile(SND_HEY, 0); //Minus one HAHAHAHA
+    playFile(SND_COUNT, 0); //Minus one HAHAHAHA
   }
 
   //Player in the area - Bark at them to come over
@@ -388,7 +390,7 @@ void loop() {
   }
 
   if(machineState == WAIT_FOR_PLAYER_TO_LEAVE){
-
+    selectRandomLeavePhrase = random(sizeof(asnd_attract));
   }
 
   //Timer for user to leave
@@ -725,6 +727,12 @@ unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
   unsigned char result;
 
   if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > (timeInMilliseconds)) && !soundFileActive){
+    
+    if(TDEBUG & 16){
+      Serial.println('timer : %l', ctr_time);
+      Serial.println('time last completed: %l', timeLastFileCompleted);
+    }
+    
     return TRUE;
   }
   return FALSE;
@@ -745,7 +753,7 @@ unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPla
   if(readyToPlayNextMP3(delaySinceLastPlayed)){  
     Serial.write(fileNumber);
     timeLastFileCompleted = 0; //update timer
-    
+    delay(1);
     return TRUE;
   }
   return FALSE;
@@ -783,8 +791,28 @@ void flashMirrorLight(){
   }
 }
 
-void debugSay(unsigned int number) { // Say each digit of a number
-	// Wait until we aren't saying anything
+void debugSay(unsigned long number) { // Say each digit of a number
+	// Break the number into multiple parts
+	uint8_t ones,tens,hund,thou,tthou;
+
+	tthou = number/10000;
+	if (tthou != 0) {
+		playDigit(tthou);
+	}
+	thou = number/1000;
+	if (tthou != 0 && thou != 0) {
+		playDigit(thou);
+	}
+	hund = number/100;
+	if (hund != 0 && tthou != 0 && thou != 0) {
+		playDigit(hund);
+	}
+	tens = number/10;
+	if (tens != 0 && hund != 0 && tthou != 0 && thou != 0) {
+		playDigit(tens);
+	}
+	ones = number-(tthou*10000+thou*1000+hund*100+tens*10);
+	playDigit(ones);
 }
 
 void playDigit(unsigned char number) { // Say a single digit
@@ -831,9 +859,8 @@ void playDigit(unsigned char number) { // Say a single digit
 			break;
 	}	
 	// Wait for us to be finished playing the last sound
-		while () {
-			
+		while (digitalRead(tcb380Active) == 0) { // Playing a sound, wait
+			delay(10);
 		}
-
-		playFile(fileNumber)
+		playFile(fileNumber);
 }
