@@ -271,9 +271,6 @@ void loop() {
   // See what we should do with the illumination LEDs
   panel_checkFade();
 
-  // See what is happening with the PIR sensors
-  sen_pir_test = pir_check(pin_sen_pir_test);
-
   //Scan the mux to count fingers
   lastFingerCount = totalFingersCounted;
 
@@ -811,19 +808,19 @@ void debugSay(unsigned long number) { // Say each digit of a number
 	uint8_t ones,tens,hund,thou,tthou;
 
 	tthou = number/10000;
-	if (tthou != 0) {
+	if (tthou > 0) {
 		playDigit(tthou);
 	}
 	thou = number/1000;
-	if (tthou != 0 && thou != 0) {
+	if (thou > 0 || tthou != 0) {
 		playDigit(thou);
 	}
 	hund = number/100;
-	if (hund != 0 && tthou != 0 && thou != 0) {
+	if (hund > 0 || tthou > 0 || thou > 0)) {
 		playDigit(hund);
 	}
 	tens = number/10;
-	if (tens != 0 && hund != 0 && tthou != 0 && thou != 0) {
+	if (tens > 0 || hund > 0 || tthou > 0 || thou > 0)) {
 		playDigit(tens);
 	}
 	ones = number-(tthou*10000+thou*1000+hund*100+tens*10);
@@ -872,7 +869,7 @@ void playDigit(unsigned char number) { // Say a single digit
 		case 9:
 			fileNumber = SND_9;
 			break;
-	}	
+	}
 	// Wait for us to be finished playing the last sound
 		while (digitalRead(tcb380Active) == 0) { // Playing a sound, wait
 			delay(10);
