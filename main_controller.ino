@@ -7,28 +7,6 @@
  v 0.03 Adding CD4067 Driver - main program flow
  */
 
-#define TRUE  1
-#define FALSE 0
-
-//State Machine
-#define NO_PLAYER_DETECTED 0
-#define PLAYER_DETECTED 1
-#define COUNTING_PLAYER_FINGERS 2
-#define ALIGN_PLAYER_TO_MIRROR 3
-#define WAIT_FOR_PLAYER_TO_LEAVE 4
-
-//Pinout
-#define PIN_MIRROR_LIGHTS 6
-#define PIN_SOLENOID 4
-
-//Distance
-#define DISTANCE_SENSOR_FLOOR 60
-#define DISTANCE_SENSOR_CEILING 200
-
-#define FINGER_DEBOUCE_LENGTH 300 //Abitrary - counting in loop cycles right now
-
-#define PLAYER_DISTANCE_TIMEOUT_LENGTH 300
-
 // Defines for all of the sound files
 //1,01,One
 #define SND_1 1
@@ -110,9 +88,37 @@
 #define SND_COMEIN 39
 
 // Create arrays for the sound file types
-int asnd_laugh[] = {11,12,13,14};
-int asnd_attract[] = {14,15,16,17,18,19.20,21,22,23,24,25};
-int asnd_leave[] = {38,39};
+int asnd_laugh[] = {
+  11,12,13,14};
+int asnd_attract[] = {
+  14,15,16,17,18,19.20,21,22,23,24,25};
+int asnd_leave[] = {
+  38,39};
+
+#define TRUE  1
+#define FALSE 0
+
+//State Machine
+#define NO_PLAYER_DETECTED 0
+#define PLAYER_DETECTED 1
+#define COUNTING_PLAYER_FINGERS 2
+#define SOLENOID_ACTIVE 3
+#define ALIGN_PLAYER_TO_MIRROR 4
+#define PLAYER_ALIGNED_TO_MIRROR 5
+#define WAIT_FOR_PLAYER_TO_LEAVE 6
+
+//Pinout
+#define PIN_MIRROR_LIGHTS 6
+#define PIN_SOLENOID 4
+
+//Distance
+#define DISTANCE_SENSOR_TO_FAR 100
+#define DISTANCE_SENSOR_TO_CLOSE 120
+
+#define FINGER_DEBOUCE_LENGTH 250 //counting in loop cycles right now
+
+#define PLAYER_DISTANCE_TIMEOUT_LENGTH 300 //counting in loop cycles right now
+
 
 // Turn debugging on or off...
 // Don't even try to use #if syntax, the IDE breaks if you do
@@ -121,6 +127,7 @@ int asnd_leave[] = {38,39};
 // 2 = PIRs
 // 4 = FINGERs
 // 8 = MachineState
+// 16 = MP3Commands
 
 char TDEBUG = 0;
 
@@ -156,7 +163,7 @@ unsigned long led_level_change_start = 0; // Fade start time
 int led_cross_on = 0; // Crossfade level for LED turning on
 int led_cross_off = 255; // Crossfade level for LED turning off
 
-unsigned int sen_light = 0; // Light sensor absolute value
+unsigned int  sen_light = 0; // Light sensor absolute value
 unsigned char light_on_brightness = 255; // Max brightness of the LEDs by default (0-255))
 unsigned char led_bright_red = 0; // Normalized value of LED brightness
 unsigned char led_bright_green = 0; // Normalized value of LED brightness
@@ -183,13 +190,25 @@ unsigned long time_led_start = 0;  // Time LED went on
 #define muxPinB A2     //mux Address line
 #define muxPinA A1     //mux Address line
 unsigned char muxResult = 0;  //Current mux line result
-unsigned char totalFingersCounted = 0;
-unsigned char lastFingerCount = 0;
 
+//Finger Count variables and timers
+unsigned char totalFingersCounted = 0;
+unsigned char maxFingersCounted = 0;
+unsigned char lastFingerCount = 0;
+unsigned long fingerDebounceCounter = 0;
+unsigned char countSpoken = FALSE;
+#define FINGER_DEBOUNCE_LENGTH 50
+unsigned long solenoidTimer = 0;
 
 //TCB380
 unsigned char soundFileActive = FALSE;
+unsigned char lastSoundFileActiveState = FALSE;
 unsigned char tcb380Active = 3;    //sound file output
+unsigned int  timeLastFileCompleted = 1; //Initilize so we can play on bootup
+
+//Mirror light variables
+unsigned long mirrorLightTimer = 0;
+unsigned char mirrorTimerStarted = FALSE;
 
 //User State Variables
 unsigned char machineState = NO_PLAYER_DETECTED; //Check define tablefor states
@@ -197,6 +216,10 @@ unsigned char userInProximity = 0;
 unsigned int  userDistance = 0;
 unsigned int fingerDebounceCount = 0;
 unsigned int playerDetectedTimeout = 0;
+unsigned char timeToLaugh = FALSE;
+unsigned char laughPlayed = FALSE;
+unsigned char distanceAchievedPlayed = FALSE;
+unsigned char nowLookIntoMyMirrorPlayed = FALSE;
 
 // This function looks for someone standing near the exhibit
 int pir_check(int pin = 0) {
@@ -204,13 +227,14 @@ int pir_check(int pin = 0) {
   val = digitalRead(pin);
   if (val == 0) {
     digitalWrite(pin_led_test,LOW);
-  } else {
+  } 
+  else {
     digitalWrite(pin_led_test,HIGH);
   }
   if (TDEBUG & 2) {
-      Serial.print("pir=");
-      Serial.println(val);
-      delay(10);
+    Serial.print("pir=");
+    Serial.println(val);
+    delay(10);
   }
 }
 
@@ -222,7 +246,7 @@ void setup() {
   pin_led_cross_off = pin_led_red;
   ctr_red = 1;
   time_led_start = millis() - delay_red_green_random - 1; // Turn an LED on right away
-  
+
   // mux outputs
   pinMode(muxPinA, OUTPUT); 
   pinMode(muxPinB, OUTPUT);
@@ -230,32 +254,34 @@ void setup() {
   pinMode(muxPinD, OUTPUT);
   //mux input is analog
   pinMode(muxInputPin, INPUT);
-  
+
   //Extra hardware
   pinMode(PIN_MIRROR_LIGHTS, OUTPUT);
   pinMode(PIN_SOLENOID, OUTPUT);
 
   //TCB380 Initilization
   Serial.begin(4800);
-  //Serial.write(0xE0); //Set Volume 0xC8-E7
+  Serial.write(0xE0); //Set Volume 0xC8-E7
   delay(50);
-  pinMode(tcb380Active, INPUT);
-  
+  pinMode(tcb380Active, INPUT_PULLUP);
+
   led_test();
   lightBoxTest();
   solenoidTest();
-  
+
   if (TDEBUG == 1) {
     pinMode(pin_sen_pir_test, INPUT);
     pinMode(pin_led_test, OUTPUT);
   }
+
+
 }
 
 void loop() {
-	// Housekeeping
+  // Housekeeping
   ctr_time_prv = ctr_time; // Set the previous value of the timer
   ctr_time = millis();
-	time_loop_delay = ctr_time - ctr_time_prv; // Delay since the last loop
+  time_loop_delay = ctr_time - ctr_time_prv; // Delay since the last loop
   ctr_loop++;
 
   // See what we should do with the illumination LEDs
@@ -263,179 +289,218 @@ void loop() {
 
   // See what is happening with the PIR sensors
   sen_pir_test = pir_check(pin_sen_pir_test);
-  
+
   //Scan the mux to count fingers
   lastFingerCount = totalFingersCounted;
+
   totalFingersCounted = scanFingerSensors();
+  if(lastFingerCount != totalFingersCounted){
+    fingerDebounceCounter = ctr_time;
+  }
 
   userInProximity = readFrontPIRSensor(); //userInProximity holds the PIR Sensor
   userDistance = readDistanceSensor();  //userDistance is the distance!
-  
-  //Solenoid test
-  /*if(totalFingersCounted == 3){
-    digitalWrite(PIN_SOLENOID, HIGH);
-  }else{
-    digitalWrite(PIN_SOLENOID, LOW);
+
+  //update the file active states
+  lastSoundFileActiveState = soundFileActive;
+  soundFileActive = !digitalRead(tcb380Active); //Active low from mp3 module while sound is play pin low
+
+  //Update time when the busy line transitions to file inactive
+  if(soundFileActive != lastSoundFileActiveState && !soundFileActive){
+    timeLastFileCompleted = ctr_time;
   }
-  
-  //Lightbox test
-  if(totalFingersCounted == 2){
-    digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
-  }else{
-    digitalWrite(PIN_MIRROR_LIGHTS, LOW);
-  }*/
-  
-  /*if(totalFingersCounted != lastFingerCount){
-    Serial.write(totalFingersCounted-1);
-  }*/
-  
+
   //No user detected - Bark for attention  
-  
+
   //Finger count routine begins - overrides PIR   
   if((totalFingersCounted > 0) &&
-     (machineState == NO_PLAYER_DETECTED) ||
-     (machineState == PLAYER_DETECTED))
+    (machineState == NO_PLAYER_DETECTED) ||
+    (machineState == PLAYER_DETECTED))
   {
     machineState = COUNTING_PLAYER_FINGERS;
   }
-  
+
   //Debounce finger input sensors
   //until the number of fingers is stable
-  if((machineState == COUNTING_PLAYER_FINGERS) &&
-      (totalFingersCounted == lastFingerCount))
+  if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted < 10))
   {
-    fingerDebounceCount++;
+    playFile(totalFingersCounted, 0);
+    /*if(TDEBUG & 16){
+     Serial.println((totalFingersCounted-1) + 48);
+     }*/
+  }  
+
+  if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted == 10) && !timeToLaugh){
+    countSpoken = playFile(totalFingersCounted, 0);  //Max fingers achieved
+    if(countSpoken){
+      countSpoken = FALSE;
+      solenoidTimer = ctr_time;
+      timeToLaugh = TRUE;
+      machineState = SOLENOID_ACTIVE;
+    }
   }
   
-  //Finger debounce complete - Speak the count
-  if(fingerDebounceCount > FINGER_DEBOUCE_LENGTH){
-    Serial.write(totalFingersCounted-1);
-    //soundFileActive = digitalRead(tcb380Active);
-    //Serial.println(soundFileActive);    
-    fingerDebounceCount = 0;
-    //machineState = NO_PLAYER_DETECTED;
-    //Fire solenoid
+  if(machineState == SOLENOID_ACTIVE){
+    whackSolenoid();
   }
-    
+  
+  if((*machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR)) && timeToLaugh){
+    laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
+    if(laughPlayed){
+      timeToLaugh = FALSE;
+    }
+  }
+
+
   //If the front PIR detects movement OR the distance sensor is below threshold
   if((machineState == NO_PLAYER_DETECTED) && userInProximity){
-      machineState = PLAYER_DETECTED;
+    machineState = PLAYER_DETECTED;
+    playFile(SND_HEY, 0); //Minus one HAHAHAHA
   }
-  
-  
+
   //Player in the area - Bark at them to come over
   if(machineState == PLAYER_DETECTED){
-      playerDetectedTimeout = PLAYER_DISTANCE_TIMEOUT_LENGTH;
+    playerDetectedTimeout = PLAYER_DISTANCE_TIMEOUT_LENGTH;
   }
-  
+
   //Count until timeout or user overrides by putting fingers in! 
   if(playerDetectedTimeout > 0){
-      playerDetectedTimeout--; //Count down until timeout is complete
-      if(playerDetectedTimeout == 0){ //Timeout is complete 
-        machineState = NO_PLAYER_DETECTED;
-      }
+    playerDetectedTimeout--; //Count down until timeout is complete
+    if(playerDetectedTimeout == 0){ //Timeout is complete 
+      machineState = NO_PLAYER_DETECTED;
+    }
   }
-  
-  /*if((userInProximity == TRUE) && !soundFileActive){
-    //Tell user to get closer and put fingers in
-    Serial.write(1);
-  }*/
-  
+
   //Add timer to call the user a spoilsport if they won't come
-  
+
   //Begin Magic Mirror routine
+  if(machineState == ALIGN_PLAYER_TO_MIRROR && !nowLookIntoMyMirrorPlayed){
+    nowLookIntoMyMirrorPlayed = playFile(31, 0);
+  }
+    
+  if(machineState == ALIGN_PLAYER_TO_MIRROR){
     //Guide user to optimal distance
-    //If above threshold - speak "closer"
-    //If below threshold - speak "farther away" 
-    //Fire Mirror lighting
-    //Laugh
-    //Instruct user to find their true selves
+    
+      //If above threshold - speak "closer"
+      if(userDistance < DISTANCE_SENSOR_TO_FAR){
+        playFile(0x20, 0);
+      }
+      else if(userDistance > DISTANCE_SENSOR_TO_CLOSE){
+        playFile(0x21, 0);
+      }
+      else{ //User is the right distance
+        distanceAchievedPlayed = playFile(0x22, 0);
+        if(distanceAchievedPlayed){
+          distanceAchievedPlayed = FALSE;
+          nowLookIntoMyMirrorPlayed = FALSE;
+          machineState = PLAYER_ALIGNED_TO_MIRROR;
+          mirrorLightTimer = ctr_time;
+        }
+      }
+    }
+    
+  //Instruct user to find their true selves
   
+  if(machineState == PLAYER_ALIGNED_TO_MIRROR && !digitalRead(tcb380Active)){
+    
+    if(mirrorTimerStarted == FALSE){
+      mirrorLightTimer = ctr_time;
+      mirrorTimerStarted = TRUE;
+    }
+    flashMirrorLight();
+  }
+
+  if(machineState == WAIT_FOR_PLAYER_TO_LEAVE){
+
+  }
+
   //Timer for user to leave
   //Tell them to scram on timeout
   //Back to  outer loop
-  
-  
+
   //Serial.println(userDistance);
   if(TDEBUG & 8){
     Serial.println(machineState);
   }
-  
+
   //Check Rear PIR - yell at hooligans behind the machine
-  
-  digitalWrite(PIN_SOLENOID, LOW); //Safety - Always deactivate the solenoid
-  
+
+  //digitalWrite(PIN_SOLENOID, LOW); //Safety - Always deactivate the solenoid - Can't do this gotta be asyncronous to play NINE! NINE! NINE!
+
   // Delay at the end of the loop (optional)
   delay(loop_delay);
 }
 
 void panel_checkFade() { // See if we should fade to another LED for the panel
-	led_on_time = ctr_time - time_led_start;
-	// See if we need to flash the UV LED
-	if (random(random_uv_led_pool) == 1 || uv_led_on_time > 0) { // Randomly display UV LED
-		if (uv_led_on_time > 0) { // UV is currently on
-			// See if we should turn it off
-			if (ctr_time - uv_led_on_time > uv_led_on) { // on long enough, turn it off
-				analogWrite(pin_led_uv, 0);
-				uv_led_on_time = 0;
-			}
-		} else {
-		 // Turn on UV LED
-			uv_led_on_time = ctr_time;
-			analogWrite(pin_led_uv, led_bright_uv);
-			ctr_uv++;
-		}		 
-	}
-  
+  led_on_time = ctr_time - time_led_start;
+  // See if we need to flash the UV LED
+  if (random(random_uv_led_pool) == 1 || uv_led_on_time > 0) { // Randomly display UV LED
+    if (uv_led_on_time > 0) { // UV is currently on
+      // See if we should turn it off
+      if (ctr_time - uv_led_on_time > uv_led_on) { // on long enough, turn it off
+        analogWrite(pin_led_uv, 0);
+        uv_led_on_time = 0;
+      }
+    } 
+    else {
+      // Turn on UV LED
+      uv_led_on_time = ctr_time;
+      analogWrite(pin_led_uv, led_bright_uv);
+      ctr_uv++;
+    }		 
+  }
+
   if ( led_on_time > delay_red_green_random) { // Time to switch to the alternate LED
     delay_red_green_random = random(delay_red_green_min, delay_red_green_max);
     time_led_start = millis();
-		
+
     if ( ctr_red == 0 && ctr_green > 1000) { // Counter rolled over, reset counters
       ctr_green = 0;
       ctr_red = 1;
     }
-		
+
     pin_led_cross_off = pin_led_cross_on; // Previous pin that was on
-		// Set relative brightness for the LEDs
-		led_bright_red = light_on_brightness * 1;
-		led_bright_green = light_on_brightness * 1;
-	  led_bright_uv = light_on_brightness * 1;
-		
-		if ( ctr_red > ctr_green) {
-			pin_led_cross_on = pin_led_green;
-			led_cross_off = led_bright; // Set cross-fade max value for LED turning off
-			led_bright = led_bright_green;
-			ctr_green++;
-		} else {
-			pin_led_cross_on = pin_led_red;
-			led_cross_off = led_bright; // Set cross-fade max value for LED turning off
-			led_bright = led_bright_red;
-			ctr_red++;
-		}
-		
+    // Set relative brightness for the LEDs
+    led_bright_red = light_on_brightness * 1;
+    led_bright_green = light_on_brightness * 1;
+    led_bright_uv = light_on_brightness * 1;
+
+    if ( ctr_red > ctr_green) {
+      pin_led_cross_on = pin_led_green;
+      led_cross_off = led_bright; // Set cross-fade max value for LED turning off
+      led_bright = led_bright_green;
+      ctr_green++;
+    } 
+    else {
+      pin_led_cross_on = pin_led_red;
+      led_cross_off = led_bright; // Set cross-fade max value for LED turning off
+      led_bright = led_bright_red;
+      ctr_red++;
+    }
+
     led_cross_on = 0;  // Set cross-fade value to 0 for the LED turning on
     led_level_change_start = millis();
-		if (TDEBUG & 1) {
-			Serial.print("led_bright= ");
-			Serial.print(led_bright);
-			Serial.print("\tled_red= ");
-			Serial.print(led_bright_red);
-			Serial.print("\tled_green= ");
-			Serial.println(led_bright_green);
-		}
+    if (TDEBUG & 1) {
+      Serial.print("led_bright= ");
+      Serial.print(led_bright);
+      Serial.print("\tled_red= ");
+      Serial.print(led_bright_red);
+      Serial.print("\tled_green= ");
+      Serial.println(led_bright_green);
+    }
 
-  } else { // Not turning a new LED on, see if we need to cross-fade
+  } 
+  else { // Not turning a new LED on, see if we need to cross-fade
     if (led_cross_on < led_bright || led_cross_off != 0) { // LED to turn on is not yet at full brightness, increase by 1 level
       // See how many levels to change the LED
-			
-			ctr_time = millis();
-			// Delay between last change and now
+
+      ctr_time = millis();
+      // Delay between last change and now
       led_level_change = (ctr_time - led_level_change_start) / delay_led_cross;
       if (led_level_change > 1) { // Too long, turn them off/on
         led_level_change = 1;
       }
-			
+
       led_cross_on = led_level_change * led_bright;
       led_cross_off = led_bright - (led_level_change * led_bright);
 
@@ -443,29 +508,29 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
         led_cross_on = led_bright;
         led_cross_off = 0;
       }
-			
+
       analogWrite(pin_led_cross_on, led_cross_on);
       analogWrite(pin_led_cross_off, led_cross_off);
       // print the results to the serial monitor:
-			if (TDEBUG & 1) {
-				Serial.print("t=");
-				Serial.print(ctr_time);
-				Serial.print("\tst=");
-				Serial.print(led_level_change_start);
-				Serial.print("\tled_bright=");
-				Serial.print(led_bright);
-				Serial.print("\tledon=");
-				Serial.print(led_cross_on);
-				Serial.print("\tledoff=");
-				Serial.print(led_cross_off);
-				Serial.print("\tledlevel=");
-				Serial.print(led_level_change);
-				Serial.print("\t pin=");
-				Serial.print(pin_led_cross_on);
-				Serial.print("\t chg=");
-				Serial.println((ctr_time - led_level_change_start) / delay_led_cross);
-				delay(20);
-			}
+      if (TDEBUG & 1) {
+        Serial.print("t=");
+        Serial.print(ctr_time);
+        Serial.print("\tst=");
+        Serial.print(led_level_change_start);
+        Serial.print("\tled_bright=");
+        Serial.print(led_bright);
+        Serial.print("\tledon=");
+        Serial.print(led_cross_on);
+        Serial.print("\tledoff=");
+        Serial.print(led_cross_off);
+        Serial.print("\tledlevel=");
+        Serial.print(led_level_change);
+        Serial.print("\t pin=");
+        Serial.print(pin_led_cross_on);
+        Serial.print("\t chg=");
+        Serial.println((ctr_time - led_level_change_start) / delay_led_cross);
+        delay(20);
+      }
     }
   }
 }
@@ -475,7 +540,7 @@ unsigned char scanFingerSensors(void){
 
   unsigned char tempFingerCount = 0; //current finger count for return
   unsigned char tempMuxResult = 0;
-  
+
   //Finger sensors are on first ten mux inputs
   for(unsigned char i = 0; i < 10; i++){
     tempMuxResult = readMuxPin(i);
@@ -485,37 +550,37 @@ unsigned char scanFingerSensors(void){
     tempFingerCount = tempFingerCount + tempMuxResult;
     tempMuxResult = 0;
   }
-  if(TDEBUG == 3){
+  if(TDEBUG == 2){
     Serial.println("");
   }
-  
+
   return tempFingerCount;
 }
 
 //Check the Front PIR Sensor
 unsigned char readFrontPIRSensor(){
   unsigned char result = 0;
-  
+
   result = readMuxPin(10);
   if(TDEBUG == 4){
     Serial.print("PIR = ");
     Serial.println(result);
   }
   return result;
-  
+
 }
 
 //Check the distance sensor
 unsigned char readDistanceSensor(){
   unsigned char result = 0;
-  
+
   result = readMuxPin(12);
-  
+
   if(TDEBUG == 4){
     Serial.print("Distance = ");
     Serial.println(result);
   }
-  
+
   return result;
 }
 
@@ -526,129 +591,129 @@ unsigned int readMuxPin(unsigned char muxPin){
   unsigned int result;
 
   switch(muxPin){
-  
-    case 0:
-      //set address lines
-      digitalWrite(muxPinA, 0);
-      digitalWrite(muxPinB, 0);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
-  
-    case 1:
-      //set address lines
-      digitalWrite(muxPinA, 1);
-      digitalWrite(muxPinB, 0);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
-  
-    case 2:
-      //set address lines
-      digitalWrite(muxPinA, 0);
-      digitalWrite(muxPinB, 1);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
 
-    case 3:
-      //set address lines
-      digitalWrite(muxPinA, 1);
-      digitalWrite(muxPinB, 1);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
-  
-    case 4:
-      //set address lines
-      digitalWrite(muxPinA, 0);
-      digitalWrite(muxPinB, 0);
-      digitalWrite(muxPinC, 1);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
+  case 0:
+    //set address lines
+    digitalWrite(muxPinA, 0);
+    digitalWrite(muxPinB, 0);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
 
-    case 5:
-      //set address lines
-      digitalWrite(muxPinA, 1);
-      digitalWrite(muxPinB, 0);
-      digitalWrite(muxPinC, 1);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
-    
-    case 6:
-      //set address lines
-      digitalWrite(muxPinA, 0);
-      digitalWrite(muxPinB, 1);
-      digitalWrite(muxPinC, 1);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
-      
-    case 7:
-      //set address lines
-      digitalWrite(muxPinA, 1);
-      digitalWrite(muxPinB, 1);
-      digitalWrite(muxPinC, 1);
-      digitalWrite(muxPinD, 0);
-      result = digitalRead(muxInputPin);
-      break;
+  case 1:
+    //set address lines
+    digitalWrite(muxPinA, 1);
+    digitalWrite(muxPinB, 0);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
 
-    case 8:
-      //set address lines
-      digitalWrite(muxPinA, 0);
-      digitalWrite(muxPinB, 0);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 1);
-      result = digitalRead(muxInputPin);
-      break;
-  
-    case 9:
-      //set address lines
-      digitalWrite(muxPinA, 1);
-      digitalWrite(muxPinB, 0);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 1);
-      result = digitalRead(muxInputPin);
-      break;
+  case 2:
+    //set address lines
+    digitalWrite(muxPinA, 0);
+    digitalWrite(muxPinB, 1);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
+
+  case 3:
+    //set address lines
+    digitalWrite(muxPinA, 1);
+    digitalWrite(muxPinB, 1);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
+
+  case 4:
+    //set address lines
+    digitalWrite(muxPinA, 0);
+    digitalWrite(muxPinB, 0);
+    digitalWrite(muxPinC, 1);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
+
+  case 5:
+    //set address lines
+    digitalWrite(muxPinA, 1);
+    digitalWrite(muxPinB, 0);
+    digitalWrite(muxPinC, 1);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
+
+  case 6:
+    //set address lines
+    digitalWrite(muxPinA, 0);
+    digitalWrite(muxPinB, 1);
+    digitalWrite(muxPinC, 1);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
+
+  case 7:
+    //set address lines
+    digitalWrite(muxPinA, 1);
+    digitalWrite(muxPinB, 1);
+    digitalWrite(muxPinC, 1);
+    digitalWrite(muxPinD, 0);
+    result = digitalRead(muxInputPin);
+    break;
+
+  case 8:
+    //set address lines
+    digitalWrite(muxPinA, 0);
+    digitalWrite(muxPinB, 0);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 1);
+    result = digitalRead(muxInputPin);
+    break;
+
+  case 9:
+    //set address lines
+    digitalWrite(muxPinA, 1);
+    digitalWrite(muxPinB, 0);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 1);
+    result = digitalRead(muxInputPin);
+    break;
 
     //Front PIR
-    case 10:
-      //set address lines
-      digitalWrite(muxPinA, 0);
-      digitalWrite(muxPinB, 1);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 1);
-      result = digitalRead(muxInputPin);
-      break;
-    
-    //Rear PIR
-    case 11: 
-      //set address lines
-      digitalWrite(muxPinA, 1);
-      digitalWrite(muxPinB, 1);
-      digitalWrite(muxPinC, 0);
-      digitalWrite(muxPinD, 1);
-      result = digitalRead(muxInputPin);
-      break;    
-      
-    case 12: //Distance Sensor
-      //set address lines
-      digitalWrite(muxPinA, 0);
-      digitalWrite(muxPinB, 0);
-      digitalWrite(muxPinC, 1);
-      digitalWrite(muxPinD, 1);      
-      delay(10);
-      result = analogRead(muxInputPin);
-      break;      
+  case 10:
+    //set address lines
+    digitalWrite(muxPinA, 0);
+    digitalWrite(muxPinB, 1);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 1);
+    result = digitalRead(muxInputPin);
+    break;
 
-    default:
-      break;
+    //Rear PIR
+  case 11: 
+    //set address lines
+    digitalWrite(muxPinA, 1);
+    digitalWrite(muxPinB, 1);
+    digitalWrite(muxPinC, 0);
+    digitalWrite(muxPinD, 1);
+    result = digitalRead(muxInputPin);
+    break;    
+
+  case 12: //Distance Sensor
+    //set address lines
+    digitalWrite(muxPinA, 0);
+    digitalWrite(muxPinB, 0);
+    digitalWrite(muxPinC, 1);
+    digitalWrite(muxPinD, 1);      
+    delay(10);
+    result = analogRead(muxInputPin);
+    break;      
+
+  default:
+    break;
   }
 
   return result;
@@ -656,14 +721,14 @@ unsigned int readMuxPin(unsigned char muxPin){
 
 // Test functions
 void led_test() { // Startup test for LEDs
-	analogWrite(pin_led_red, 255);
+  analogWrite(pin_led_red, 255);
   analogWrite(pin_led_green, 255);
   analogWrite(pin_led_uv, 255);
-	delay(5000);
-	analogWrite(pin_led_red, 0);
+  delay(5000);
+  analogWrite(pin_led_red, 0);
   analogWrite(pin_led_green, 0);
   analogWrite(pin_led_uv, 0);
-	
+
 }
 
 void lightBoxTest(){
@@ -676,4 +741,66 @@ void solenoidTest(){
   digitalWrite(PIN_SOLENOID, HIGH);
   delay(500);
   digitalWrite(PIN_SOLENOID, LOW);
+}
+
+
+unsigned char readyToPlayNextMP3(unsigned int timeInDeciseconds = 0){
+  unsigned char result;
+  if((timeLastFileCompleted != 0) &&
+    ((ctr_time - timeLastFileCompleted) > (timeInDeciseconds*100)) &&
+    !soundFileActive){
+    return TRUE;
+  }
+  return FALSE;
+} 
+
+//Return true if file plays, else false
+unsigned char playFile(unsigned char fileNumber, unsigned char delaySinceLastPlayed){
+  unsigned char error = FALSE;
+
+  //Don't send non-file commands or random file commands
+  if((fileNumber > 199) || (fileNumber == 0)){
+    return FALSE;
+  } 
+
+  //Play file if ready
+  if(readyToPlayNextMP3(delaySinceLastPlayed)){  
+    Serial.write(fileNumber);
+    timeLastFileCompleted = 0; //update timer
+    return TRUE;
+  }
+  return FALSE;
+}
+
+
+void whackSolenoid(){
+
+  if((ctr_time -  solenoidTimer) > 200 && (ctr_time -  solenoidTimer) < 400){
+    digitalWrite(PIN_SOLENOID, HIGH);
+  }else if((ctr_time -solenoidTimer) > 400){
+    solenoidTimer = 0;
+    digitalWrite(PIN_SOLENOID, LOW);
+    machineState = ALIGN_PLAYER_TO_MIRROR; //
+  }else{
+    digitalWrite(PIN_SOLENOID, LOW);
+  }
+}
+
+void flashMirrorLight(){
+  if((ctr_time -  mirrorLightTimer) < 200){
+    digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
+  }
+  else if((ctr_time -  mirrorLightTimer) < 400){
+    digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+  }
+  else if((ctr_time -  mirrorLightTimer) < 800){
+    digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
+  }
+  else if((ctr_time -  mirrorLightTimer) < 1200){
+    digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+  }else{
+    mirrorLightTimer = 0;
+    machineState = NO_PLAYER_DETECTED;
+    digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+  }
 }
