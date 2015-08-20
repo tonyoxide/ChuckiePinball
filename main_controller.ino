@@ -222,6 +222,7 @@ unsigned char distanceAchievedPlayed = FALSE;
 unsigned char nowLookIntoMyMirrorPlayed = FALSE;
 unsigned char selectRandomTaunt = 0;
 unsigned char selectRandomLeavePhrase = 0;
+unsigned char leaveFilePlayed = FALSE;
 
 void setup() {
   randomSeed(analogRead(0));
@@ -253,12 +254,14 @@ void setup() {
   lightBoxTest();
   solenoidTest();
 
+  pinMode(pin_led_test, OUTPUT);
   if (TDEBUG == 1) {
     pinMode(pin_sen_pir_test, INPUT);
-    pinMode(pin_led_test, OUTPUT);
   }
 
 
+  debugSay(74);
+  //playDigit(7);
 }
 
 void loop() {
@@ -738,7 +741,7 @@ void solenoidTest(){
 unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
   unsigned char result;
 
-  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > (timeInMilliseconds)) && !soundFileActive){
+  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > timeInMilliseconds) && !soundFileActive){
     if(TDEBUG & 16){
       Serial.println('timer : %l', ctr_time);
       Serial.println('time last completed: %l', timeLastFileCompleted);
@@ -876,6 +879,5 @@ void playDigit(unsigned char number) { // Say a single digit
 			digitalWrite(pin_led_test,HIGH);
 		}
 		digitalWrite(pin_led_test,LOW);
-		
-		playFile(fileNumber);
+        playFile(fileNumber, 0);
 }
