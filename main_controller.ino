@@ -250,9 +250,10 @@ void setup() {
   pinMode(pin_tcb380Active, INPUT);
   pinMode(pin_led_test, OUTPUT);
 
-  led_test();
-  lightBoxTest();
-  solenoidTest();
+//  led_test();
+//  lightBoxTest();
+//  solenoidTest();
+	debugSay(123);
 }
 
 void loop() {
@@ -274,7 +275,7 @@ void loop() {
     if(lastFingerCount != totalFingersCounted){
       fingerDebounceCounter = ctr_time;
     }
-  
+		
     userInProximity = readFrontPIRSensor(); //userInProximity holds the PIR Sensor
     userDistance = readDistanceSensor();  //userDistance is the distance!
   }
@@ -283,16 +284,16 @@ void loop() {
   if(soundFileActive == TRUE && !is_sound_playing()){
     timeLastFileCompleted = ctr_time;
   }
-
+	
   //update the file active states
   soundFileActive = is_sound_playing();
-
+	
   //No user detected - Bark for attention  
   selectRandomTaunt = random(sizeof(asnd_attract));
   if(machineState == NO_PLAYER_DETECTED){
     playFile(asnd_attract[selectRandomTaunt], 10000);
   }
-
+	
   //Finger count routine begins - overrides PIR   
   if((totalFingersCounted > 0) &&
     (machineState == NO_PLAYER_DETECTED) ||
@@ -313,7 +314,7 @@ void loop() {
      Serial.println((totalFingersCounted-1) + 48);
      }*/
   }  
-
+	
   if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted == 10) && !timeToLaugh){
     countSpoken = playFile(totalFingersCounted, 0);  //Max fingers achieved
     if(countSpoken){
@@ -336,7 +337,7 @@ void loop() {
   
   if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR) && timeToLaugh){
     laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
-
+		
     //Laugh complete - clear flag
     if(laughPlayed){
       timeToLaugh = FALSE; 
@@ -357,7 +358,7 @@ void loop() {
   if(machineState == PLAYER_DETECTED){
     playerDetectedTimeout = PLAYER_DISTANCE_TIMEOUT_LENGTH;
   }
-
+	
   //Count until timeout or user overrides by putting fingers in! 
   if(playerDetectedTimeout > 0){
     playerDetectedTimeout--; //Count down until timeout is complete
@@ -365,7 +366,7 @@ void loop() {
       machineState = NO_PLAYER_DETECTED;
     }
   }
-
+	
   //Add timer to call the user a spoilsport if they won't come
 
   //Begin Magic Mirror routine
