@@ -198,6 +198,7 @@ unsigned long fingerDebounceCounter = 0;
 unsigned char countSpoken = FALSE;
 #define FINGER_DEBOUNCE_LENGTH 50
 unsigned long solenoidTimer = 0;
+unsigned char solenoidComplete = false;
 
 //TCB380
 unsigned char soundFileActive = FALSE;
@@ -276,16 +277,19 @@ void loop() {
   // See what we should do with the illumination LEDs
   panel_checkFade();
 
-  //Scan the mux to count fingers
-  lastFingerCount = totalFingersCounted;
-
-  totalFingersCounted = scanFingerSensors();
-  if(lastFingerCount != totalFingersCounted){
-    fingerDebounceCounter = ctr_time;
+  //If we're in serial debug we need to skip the input read routines
+  if(!(TDEBUG & 32)){
+    //Scan the mux to count fingers
+    lastFingerCount = totalFingersCounted;
+  
+    totalFingersCounted = scanFingerSensors();
+    if(lastFingerCount != totalFingersCounted){
+      fingerDebounceCounter = ctr_time;
+    }
+  
+    userInProximity = readFrontPIRSensor(); //userInProximity holds the PIR Sensor
+    userDistance = readDistanceSensor();  //userDistance is the distance!
   }
-
-  userInProximity = readFrontPIRSensor(); //userInProximity holds the PIR Sensor
-  userDistance = readDistanceSensor();  //userDistance is the distance!
 	
   //Update time when the busy line transitions to file inactive
   if(soundFileActive == TRUE && !is_sound_playing()){
@@ -299,7 +303,6 @@ void loop() {
   selectRandomTaunt = random(sizeof(asnd_attract));
   if(machineState == NO_PLAYER_DETECTED){
     playFile(asnd_attract[selectRandomTaunt], 10000);
-    //debugSay(583);
   }
 
   //Finger count routine begins - overrides PIR   
@@ -308,6 +311,9 @@ void loop() {
     (machineState == PLAYER_DETECTED))
   {
     machineState = COUNTING_PLAYER_FINGERS;
+    if(TDEBUG & 32){
+      Serial.println("Counting Fingers");
+    }
   }
 
   //Debounce finger input sensors
@@ -327,17 +333,28 @@ void loop() {
       solenoidTimer = ctr_time;
       timeToLaugh = TRUE;
       machineState = SOLENOID_ACTIVE;
+      if(TDEBUG & 32){
+        Serial.println("Whack!");
+      }
     }
   }
   
   if(machineState == SOLENOID_ACTIVE){
     whackSolenoid();
+    if(solenoidComplete){
+      machineState = ALIGN_PLAYER_TO_MIRROR;
+    }
   }
   
   if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR) && timeToLaugh){
     laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
+
+    //Laugh complete - clear flag
     if(laughPlayed){
-      timeToLaugh = FALSE;
+      timeToLaugh = FALSE; 
+      if(TDEBUG & 32){
+        Serial.println("Nine Nine Nine!");
+      }
     }
   }
 
@@ -390,7 +407,6 @@ void loop() {
     }
     
   //Instruct user to find their true selves
-  
   if(machineState == PLAYER_ALIGNED_TO_MIRROR && !is_sound_playing()){
     
     if(mirrorTimerStarted == FALSE){
@@ -416,12 +432,17 @@ void loop() {
 
   //Serial.println(userDistance);
   if(TDEBUG & 8){
+    Serial.print("state: ");
     Serial.println(machineState);
   }
-
   //Check Rear PIR - yell at hooligans behind the machine
 
   //digitalWrite(PIN_SOLENOID, LOW); //Safety - Always deactivate the solenoid - Can't do this gotta be asyncronous to play NINE! NINE! NINE!
+  
+  //If in serial debug mode
+  if(TDEBUG & 32){
+    serialDebugRead(); //Check for new serial command
+  }  
 
   // Delay at the end of the loop (optional)
   delay(loop_delay);
@@ -782,8 +803,13 @@ unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPla
   } 
 
   //Play file if ready
-  if(readyToPlayNextMP3(delaySinceLastPlayed)){  
-    Serial.write(fileNumber);
+  if(TDEBUG & 32){
+      Serial.write("playFile: ");
+      Serial.println(fileNumber);
+      return TRUE;
+  }
+  else if(readyToPlayNextMP3(delaySinceLastPlayed)){  
+    Serial.write(fileNumber);    
     timeLastFileCompleted = 0; //update timer
     delay(1);
     return TRUE;
@@ -808,6 +834,7 @@ void whackSolenoid(){
     solenoidTimer = 0;
     digitalWrite(PIN_SOLENOID, LOW);
     machineState = ALIGN_PLAYER_TO_MIRROR; //
+    solenoidComplete = true;
   }else{
     digitalWrite(PIN_SOLENOID, LOW);
   }
@@ -829,6 +856,9 @@ void flashMirrorLight(){
     mirrorLightTimer = 0;
     machineState = WAIT_FOR_PLAYER_TO_LEAVE;
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+    if(TDEBUG & 32){
+      Serial.println("Mirror Flash Complete!");
+    }
   }
 }
 
@@ -907,4 +937,29 @@ void playDigit(unsigned char num) { // Say a single digit
 		digitalWrite(pin_led_test,LOW);
 		playFile(fileNumber,0);
 		delay(1);
+}
+
+//Set TDEBUG to serial debug and uses commands below to
+//interact with top level state machine
+void serialDebugRead(){
+  unsigned char incomingByte = 0;
+  
+        if (Serial.available() > 0) {
+                // read the incoming byte:
+                incomingByte = Serial.read();
+
+                if(incomingByte == 'P'){
+                  userInProximity = true;
+                }
+                else if(incomingByte == 'T'){
+                  totalFingersCounted = 10;
+                }
+                else if(incomingByte == 'D'){
+                  userDistance = 115;
+                }
+                
+                // say what you got:
+                Serial.print("I received: ");
+                Serial.println(incomingByte, DEC);
+        }
 }
