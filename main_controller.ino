@@ -762,6 +762,14 @@ unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
     }
     return TRUE;
   }
+	digitalWrite(pin_led_test,HIGH);
+	delay(500);
+	digitalWrite(pin_led_test,LOW);
+	delay(500);
+	digitalWrite(pin_led_test,HIGH);
+	delay(500);
+	digitalWrite(pin_led_test,LOW);
+	delay(500);
   return FALSE;
 } 
 
