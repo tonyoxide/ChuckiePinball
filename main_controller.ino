@@ -7,6 +7,19 @@
  v 0.03 Adding CD4067 Driver - main program flow
  */
 
+
+// Turn debugging on or off...
+// Don't even try to use #if syntax, the IDE breaks if you do
+// Bitmask 
+// 1 = LEDs
+// 2 = PIRs
+// 4 = FINGERs
+// 8 = MachineState
+// 16 = MP3Commands
+
+unsigned char TDEBUG = 0;
+
+
 // Defines for all of the sound files
 //1,01,One
 #define SND_1 1
@@ -119,21 +132,7 @@ unsigned char asnd_leave[] = {
 
 #define PLAYER_DISTANCE_TIMEOUT_LENGTH 300 //counting in loop cycles right now
 
-
-// Turn debugging on or off...
-// Don't even try to use #if syntax, the IDE breaks if you do
-// Bitmask 
-// 1 = LEDs
-// 2 = PIRs
-// 4 = FINGERs
-// 8 = MachineState
-// 16 = MP3Commands
-
-unsigned char TDEBUG = 0;
-
 #define pin_led_test 13
-#define pin_sen_pir_test 7
-unsigned int sen_pir_test = 0; // PIR sense value
 
 // Variables you might want to change
 #define pin_led_red 9      // Red LED pin
@@ -202,8 +201,7 @@ unsigned long solenoidTimer = 0;
 
 //TCB380
 unsigned char soundFileActive = FALSE;
-unsigned char lastSoundFileActiveState = FALSE;
-unsigned char tcb380Active = 3;    //sound file output
+#define pin_tcb380Active 3    //sound file output
 unsigned int  timeLastFileCompleted = 1; //Initilize so we can play on bootup
 
 //Mirror light variables
@@ -223,24 +221,6 @@ unsigned char nowLookIntoMyMirrorPlayed = FALSE;
 unsigned char selectRandomTaunt = 0;
 unsigned char selectRandomLeavePhrase = 0;
 unsigned char leaveFilePlayed = FALSE;
-
-// This function looks for someone standing near the exhibit
-int pir_check(int pin = 0) {
-  int val = 0;
-  val = digitalRead(pin);
-  if (val == 0) {
-    digitalWrite(pin_led_test,LOW);
-  } 
-  else {
-    digitalWrite(pin_led_test,HIGH);
-  }
-  if (TDEBUG & 2) {
-    Serial.print("pir=");
-    Serial.println(val);
-    delay(10);
-  }
-}
-
 
 void setup() {
   randomSeed(analogRead(0));
@@ -266,19 +246,24 @@ void setup() {
   Serial.begin(4800);
   Serial.write(0xE0); //Set Volume 0xC8-E7
   delay(50);
-  pinMode(tcb380Active, INPUT_PULLUP);
-
-  led_test();
-  lightBoxTest();
-  solenoidTest();
-
+  pinMode(pin_tcb380Active, INPUT);
   pinMode(pin_led_test, OUTPUT);
-  if (TDEBUG == 1) {
-    pinMode(pin_sen_pir_test, INPUT); 
-  }
 
-  debugSay(74);
-  //playDigit(7);
+//  led_test();
+//  lightBoxTest();
+//  solenoidTest();
+
+//  delay(500);
+//	debugSay(7451);
+//	delay(1000);
+	playDigit(1);
+	delay(100);
+	playDigit(2);
+	delay(100);
+	playDigit(3);
+	delay(100);
+	playDigit(4);
+
 }
 
 void loop() {
@@ -291,9 +276,6 @@ void loop() {
   // See what we should do with the illumination LEDs
   panel_checkFade();
 
-  // See what is happening with the PIR sensors
-  sen_pir_test = pir_check(pin_sen_pir_test);
-
   //Scan the mux to count fingers
   lastFingerCount = totalFingersCounted;
 
@@ -304,15 +286,14 @@ void loop() {
 
   userInProximity = readFrontPIRSensor(); //userInProximity holds the PIR Sensor
   userDistance = readDistanceSensor();  //userDistance is the distance!
-
-  //update the file active states
-  lastSoundFileActiveState = soundFileActive;
-  soundFileActive = !digitalRead(tcb380Active); //Active low from mp3 module while sound is play pin low  
-
+	
   //Update time when the busy line transitions to file inactive
-  if(soundFileActive != lastSoundFileActiveState && (soundFileActive == 0)){
+  if(soundFileActive == TRUE && !is_sound_playing()){
     timeLastFileCompleted = ctr_time;
   }
+
+  //update the file active states
+  soundFileActive = is_sound_playing();
 
   //No user detected - Bark for attention  
   selectRandomTaunt = random(sizeof(asnd_attract));
@@ -410,7 +391,7 @@ void loop() {
     
   //Instruct user to find their true selves
   
-  if(machineState == PLAYER_ALIGNED_TO_MIRROR && !digitalRead(tcb380Active)){
+  if(machineState == PLAYER_ALIGNED_TO_MIRROR && !is_sound_playing()){
     
     if(mirrorTimerStarted == FALSE){
       mirrorLightTimer = ctr_time;
@@ -444,6 +425,14 @@ void loop() {
 
   // Delay at the end of the loop (optional)
   delay(loop_delay);
+}
+
+unsigned char is_sound_playing() {  // Returns true if there is a sound playing
+	 if (digitalRead(pin_tcb380Active) == 0) { //Active low from mp3 module while sound is playing
+		 return TRUE;
+	 } else {
+		 return FALSE;
+	 }
 }
 
 void panel_checkFade() { // See if we should fade to another LED for the panel
@@ -503,9 +492,7 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
       Serial.print("\tled_green= ");
       Serial.println(led_bright_green);
     }
-
-  } 
-  else { // Not turning a new LED on, see if we need to cross-fade
+  } else { // Not turning a new LED on, see if we need to cross-fade
     if (led_cross_on < led_bright || led_cross_off != 0) { // LED to turn on is not yet at full brightness, increase by 1 level
       // See how many levels to change the LED
 
@@ -565,10 +552,9 @@ unsigned char scanFingerSensors(void){
     tempFingerCount = tempFingerCount + tempMuxResult;
     tempMuxResult = 0;
   }
-  if(TDEBUG == 2){
+  if(TDEBUG & 2){
     Serial.println("");
   }
-
   return tempFingerCount;
 }
 
@@ -577,7 +563,7 @@ unsigned char readFrontPIRSensor(){
   unsigned char result = 0;
 
   result = readMuxPin(10);
-  if(TDEBUG == 4){
+  if(TDEBUG & 4){
     Serial.print("PIR = ");
     Serial.println(result);
   }
@@ -591,7 +577,7 @@ unsigned char readDistanceSensor(){
 
   result = readMuxPin(12);
 
-  if(TDEBUG == 4){
+  if(TDEBUG & 4){
     Serial.print("Distance = ");
     Serial.println(result);
   }
@@ -736,38 +722,44 @@ unsigned int readMuxPin(unsigned char muxPin){
 
 // Test functions
 void led_test() { // Startup test for LEDs
-  analogWrite(pin_led_red, 255);
-  analogWrite(pin_led_green, 255);
-  analogWrite(pin_led_uv, 255);
-  delay(5000);
-  analogWrite(pin_led_red, 0);
-  analogWrite(pin_led_green, 0);
-  analogWrite(pin_led_uv, 0);
-
+	for(char x=0;x<10;x++){
+		analogWrite(pin_led_red, 255);
+		analogWrite(pin_led_green, 255);
+		analogWrite(pin_led_uv, 255);
+		delay(250);
+		analogWrite(pin_led_red, 0);
+		analogWrite(pin_led_green, 0);
+	  analogWrite(pin_led_uv, 0);
+		delay(250);
+	}
 }
 
 void lightBoxTest(){
-  digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
-  delay(1000);
-  digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+	for(char x=0;x<10;x++){
+	  digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
+		delay(250);
+		digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+		delay(250);
+	}
 }
 
 void solenoidTest(){
-  digitalWrite(PIN_SOLENOID, HIGH);
-  delay(700);
-  digitalWrite(PIN_SOLENOID, LOW);
+	for(char x=0;x<3;x++){
+	 digitalWrite(PIN_SOLENOID, HIGH);
+	 delay(700);
+	 digitalWrite(PIN_SOLENOID, LOW);
+	 delay(300);
+	}
 }
 
 
 unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
-  unsigned char result;
 
-  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > timeInMilliseconds) && !soundFileActive){
+  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > timeInMilliseconds) && !is_sound_playing()){
     if(TDEBUG & 16){
       Serial.println('timer : %l', ctr_time);
       Serial.println('time last completed: %l', timeLastFileCompleted);
     }
-    
     return TRUE;
   }
   return FALSE;
@@ -775,9 +767,6 @@ unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
 
 //Return true if file plays, else false
 unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPlayed){
-  unsigned char error = FALSE;
-
-  soundFileActive = !digitalRead(tcb380Active); //Active low from mp3 module while sound is play pin low  
  
   //Don't send non-file commands or random file commands
   if((fileNumber > 199) || (fileNumber == 0)){
@@ -791,6 +780,14 @@ unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPla
     delay(1);
     return TRUE;
   }
+	digitalWrite(pin_led_test,HIGH);
+	delay(500);
+	digitalWrite(pin_led_test,LOW);
+	delay(500);
+	digitalWrite(pin_led_test,HIGH);
+	delay(500);
+	digitalWrite(pin_led_test,LOW);
+	delay(500);
   return FALSE;
 }
 
@@ -827,33 +824,33 @@ void flashMirrorLight(){
   }
 }
 
-void debugSay(unsigned int number) { // Say each digit of a number
+void debugSay(unsigned int num) { // Say each digit of a number
 	// Break the number into multiple parts
-	uint8_t ones,tens,hund,thou,tthou;
+	unsigned int ones,tens,hund,thou,tthou;
 
-	tthou = number/10000;
-	if (tthou != 0) {
+	tthou = num/10000;
+	if (tthou > 0) {
 		playDigit(tthou);
 	}
-	thou = number/1000;
-	if ((tthou != 0) || (thou != 0)) {
+	thou = (num-(tthou*10000))/1000;
+	if (thou > 0 || tthou > 0) {
 		playDigit(thou);
 	}
-	hund = number/100;
-	if ((hund != 0) || (tthou != 0) || (thou != 0)) {
+	hund = (num-(tthou*10000+thou*1000))/100;
+	if (hund > 0 || tthou > 0 || thou > 0) {
 		playDigit(hund);
 	}
-	tens = number/10;
-	if ((tens != 0) || (hund != 0) || (tthou != 0) || (thou != 0)) {
+	tens = (num-(tthou*10000+thou*1000+hund*100))/10;
+	if (tens > 0 || hund > 0 || tthou > 0 || thou > 0) {
 		playDigit(tens);
 	}
-	ones = number-(tthou*10000+thou*1000+hund*100+tens*10);
+	ones = num-(tthou*10000+thou*1000+hund*100+tens*10);
 	playDigit(ones);
 }
 
-void playDigit(unsigned char number) { // Say a single digit
-	unsigned int fileNumber;
-	switch(number) {
+void playDigit(unsigned char num) { // Say a single digit
+	unsigned char fileNumber;
+	switch(num) {
 		case 0:
 			fileNumber = SND_10;
 			break;
@@ -893,12 +890,13 @@ void playDigit(unsigned char number) { // Say a single digit
 		case 9:
 			fileNumber = SND_9;
 			break;
-	}	
-        // Wait for us to be finished playing the last sound
-        while (digitalRead(tcb380Active) == 0) { // Playing a sound, wait
-            delay(10);
-            digitalWrite(pin_led_test,HIGH);
-        }
-        digitalWrite(pin_led_test,LOW);
-        playFile(fileNumber, 0);
+	}
+	// Wait for us to be finished playing the last sound
+		while (is_sound_playing()) { // Playing a sound, wait
+			digitalWrite(pin_led_test,HIGH);
+			delay(10);
+		}
+		digitalWrite(pin_led_test,LOW);
+		playFile(fileNumber,0);
+		delay(1);
 }
