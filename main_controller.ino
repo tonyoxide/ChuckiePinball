@@ -11,13 +11,13 @@
 // Turn debugging on or off...
 // Don't even try to use #if syntax, the IDE breaks if you do
 // Bitmask 
-// 1 = LEDs
-// 2 = PIRs
-// 4 = FINGERs
-// 8 = MachineState
-// 16 = MP3Commands
-
-unsigned char TDEBUG = 0;
+#define DEBUG_LEDS 1
+#define DEBUG_PIRS 2
+#define DEBUG_FINGERS 4
+#define DEBUG_MACHINE_STATE 8
+#define DEBUG_MP3 16
+#define DEBUG_SERIAL 32
+unsigned char TDEBUG = DEBUG_SERIAL | DEBUG_MP3;
 
 // Defines for all of the sound files
 //1,01,One
@@ -124,12 +124,12 @@ unsigned char asnd_leave[] = {
 #define PIN_SOLENOID 4
 
 //Distance
-#define DISTANCE_SENSOR_TO_FAR 100
-#define DISTANCE_SENSOR_TO_CLOSE 120
+#define DISTANCE_SENSOR_TOO_FAR 100
+#define DISTANCE_SENSOR_TOO_CLOSE 120
 
 #define FINGER_DEBOUCE_LENGTH 250 //counting in loop cycles right now
 
-#define PLAYER_DISTANCE_TIMEOUT_LENGTH 300 //counting in loop cycles right now
+#define PLAYER_DISTANCE_TIMEOUT_LENGTH 5000 //milliseconds
 
 #define pin_led_test 13
 
@@ -202,7 +202,7 @@ unsigned char solenoidComplete = false;
 //TCB380
 unsigned char soundFileActive = FALSE;
 #define pin_tcb380Active 3    //sound file output
-unsigned int  timeLastFileCompleted = 1; //Initilize so we can play on bootup
+unsigned long  timeLastFileCompleted = 1; //Initilize so we can play on bootup
 
 //Mirror light variables
 unsigned long mirrorLightTimer = 0;
@@ -213,7 +213,9 @@ unsigned char machineState = NO_PLAYER_DETECTED; //Check define tablefor states
 unsigned char userInProximity = 0;
 unsigned int  userDistance = 0;
 unsigned int fingerDebounceCount = 0;
-unsigned int playerDetectedTimeout = 0;
+unsigned int playerDetectedTime = 0;
+
+//Sound file flags
 unsigned char timeToLaugh = FALSE;
 unsigned char laughPlayed = FALSE;
 unsigned char distanceAchievedPlayed = FALSE;
@@ -281,7 +283,9 @@ void loop() {
 	
   //Update time when the busy line transitions to file inactive
   if(soundFileActive == TRUE && !is_sound_playing()){
-    timeLastFileCompleted = ctr_time;
+    if(!(TDEBUG & 32)){
+      timeLastFileCompleted = millis(); // use the millis function, main loop distance might impair ctr_time
+    }
   }
 
   //update the file active states
@@ -290,16 +294,19 @@ void loop() {
   //No user detected - Bark for attention  
   selectRandomTaunt = random(sizeof(asnd_attract));
   if(machineState == NO_PLAYER_DETECTED){
+    /*if(TDEBUG & DEBUG_SERIAL){
+      Serial.println("Taunt players!");
+    }*/
     playFile(asnd_attract[selectRandomTaunt], 10000);
   }
 
   //Finger count routine begins - overrides PIR   
   if((totalFingersCounted > 0) &&
-    (machineState == NO_PLAYER_DETECTED) ||
-    (machineState == PLAYER_DETECTED))
+    ((machineState == NO_PLAYER_DETECTED) ||
+    (machineState == PLAYER_DETECTED)))
   {
     machineState = COUNTING_PLAYER_FINGERS;
-    if(TDEBUG & 32){
+    if(TDEBUG & DEBUG_SERIAL){
       Serial.println("Counting Fingers");
     }
   }
@@ -308,20 +315,20 @@ void loop() {
   //until the number of fingers is stable
   if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted < 10))
   {
-    playFile(totalFingersCounted, 0);
+    playFile(totalFingersCounted, 100);
     /*if(TDEBUG & 16){
      Serial.println((totalFingersCounted-1) + 48);
      }*/
   }  
 
   if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted == 10) && !timeToLaugh){
-    countSpoken = playFile(totalFingersCounted, 0);  //Max fingers achieved
+    countSpoken = playFile(totalFingersCounted, 100);  //Max fingers achieved
     if(countSpoken){
       countSpoken = FALSE;
       solenoidTimer = ctr_time;
       timeToLaugh = TRUE;
       machineState = SOLENOID_ACTIVE;
-      if(TDEBUG & 32){
+      if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Whack!");
       }
     }
@@ -335,56 +342,53 @@ void loop() {
   }
   
   if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR) && timeToLaugh){
-    laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
+    laughPlayed = playFile(SND_NINE, 10); //Minus one HAHAHAHA
 
     //Laugh complete - clear flag
     if(laughPlayed){
       timeToLaugh = FALSE; 
-      if(TDEBUG & 32){
+      if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Nine Nine Nine!");
       }
     }
   }
 
 
-  //If the front PIR detects movement OR the distance sensor is below threshold
+  //If the front PIR detects movement //Not implemented yet -- OR the distance sensor is below threshold
   if((machineState == NO_PLAYER_DETECTED) && userInProximity){
     machineState = PLAYER_DETECTED;
-    playFile(SND_COUNT, 0); //Minus one HAHAHAHA
+    playFile(SND_COUNT, 0); //Let me count!
+    playerDetectedTime = millis();
   }
 
   //Player in the area - Bark at them to come over
   if(machineState == PLAYER_DETECTED){
-    playerDetectedTimeout = PLAYER_DISTANCE_TIMEOUT_LENGTH;
+     if(checkForTimeout(playerDetectedTime, PLAYER_DISTANCE_TIMEOUT_LENGTH)){ //if the timeout hits, go back to no player detected
+       machineState = NO_PLAYER_DETECTED;
+       if(TDEBUG & DEBUG_SERIAL){
+         Serial.println("PIR Detect Timeout!");         
+       }
+     }
   }
-
-  //Count until timeout or user overrides by putting fingers in! 
-  if(playerDetectedTimeout > 0){
-    playerDetectedTimeout--; //Count down until timeout is complete
-    if(playerDetectedTimeout == 0){ //Timeout is complete 
-      machineState = NO_PLAYER_DETECTED;
-    }
-  }
-
   //Add timer to call the user a spoilsport if they won't come
 
   //Begin Magic Mirror routine
   if(machineState == ALIGN_PLAYER_TO_MIRROR && !nowLookIntoMyMirrorPlayed){
-    nowLookIntoMyMirrorPlayed = playFile(31, 0);
+    nowLookIntoMyMirrorPlayed = playFile(31, 1000);
   }
     
   if(machineState == ALIGN_PLAYER_TO_MIRROR){
     //Guide user to optimal distance
     
       //If above threshold - speak "closer"
-      if(userDistance < DISTANCE_SENSOR_TO_FAR){
-        playFile(0x21, 0);
+      if(userDistance < DISTANCE_SENSOR_TOO_FAR){
+        playFile(0x21, 1500);
       }
-      else if(userDistance > DISTANCE_SENSOR_TO_CLOSE){
-        playFile(0x20, 0);
+      else if(userDistance > DISTANCE_SENSOR_TOO_CLOSE){
+        playFile(0x20, 1500);
       }
       else{ //User is the right distance
-        distanceAchievedPlayed = playFile(0x22, 0);
+        distanceAchievedPlayed = playFile(0x22, 100);
         if(distanceAchievedPlayed){
           distanceAchievedPlayed = FALSE;
           nowLookIntoMyMirrorPlayed = FALSE;
@@ -428,7 +432,7 @@ void loop() {
   //digitalWrite(PIN_SOLENOID, LOW); //Safety - Always deactivate the solenoid - Can't do this gotta be asyncronous to play NINE! NINE! NINE!
   
   //If in serial debug mode
-  if(TDEBUG & 32){
+  if(TDEBUG & DEBUG_SERIAL){
     serialDebugRead(); //Check for new serial command
   }  
 
@@ -780,20 +784,31 @@ unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds){
 //Return true if file plays, else false
 unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPlayed){
  
+  unsigned long  currentTime = millis();
+  
   //Don't send non-file commands or random file commands
   if((fileNumber > 199) || (fileNumber == 0)){
     return FALSE;
   } 
 
   //Play file if ready
-  if(TDEBUG & 32){
+  if(TDEBUG & DEBUG_MP3) { 
+    //Adding timer from readyToPlayNextMP3 to Serial debug code
+    //Not good to nest these if's but it makes more sense to me
+    if((currentTime - timeLastFileCompleted) > delaySinceLastPlayed){  
       Serial.write("playFile: ");
       Serial.println(fileNumber);
-      return TRUE;
+      /*Serial.print("timer: ");
+      Serial.println(currentTime);
+      Serial.print("time last completed: ");
+      Serial.println(timeLastFileCompleted);*/
+      timeLastFileCompleted = currentTime; //update timer      
+      return TRUE; //Return true if the time condition has been met
+    }
   }
   else if(readyToPlayNextMP3(delaySinceLastPlayed)){
     Serial.write(fileNumber);    
-    timeLastFileCompleted = 0; //update timer
+    timeLastFileCompleted = currentTime; //update timer      
     return TRUE;
   }
   return FALSE;
@@ -921,7 +936,7 @@ void serialDebugRead(){
                 incomingByte = Serial.read();
 
                 if(incomingByte == 'P'){
-                  userInProximity = true;
+                  userInProximity = !userInProximity;
                 }
                 else if(incomingByte == 'T'){
                   totalFingersCounted = 10;
@@ -934,4 +949,25 @@ void serialDebugRead(){
                 Serial.print("I received: ");
                 Serial.println(incomingByte, DEC);
         }
+}
+
+//Generic time compare function, in milliseconds
+//Returns true if timeoutDuration has elapsed since intialTime
+unsigned char checkForTimeout(unsigned long initialTime, unsigned long timeoutDuration){
+
+  unsigned long currentTime = millis();
+  
+   /*if(TDEBUG & DEBUG_SERIAL){
+      Serial.println("Check For Timeout");
+      Serial.print("Current time: ");
+      Serial.println(currentTime);
+      Serial.print("Initial Time: ");
+      Serial.println(initialTime);
+    }*/
+
+  if((millis() -  initialTime) > timeoutDuration){
+    return true;
+  }else{
+    return false;
+  }
 }
