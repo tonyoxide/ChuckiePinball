@@ -19,7 +19,6 @@
 
 unsigned char TDEBUG = 0;
 
-
 // Defines for all of the sound files
 //1,01,One
 #define SND_1 1
@@ -150,7 +149,7 @@ float delay_led_cross = 600; // Minimum amount of time to increment 1 crossfade 
 
 // Variables you probably don't want to change
 unsigned long uv_led_on_time = 0; // Time that the UV LED was turned on
-unsigned long ctr_time = 0; // Time since boot in ms
+unsigned long ctr_time = 10; // Time since boot in ms, must be 10 to play sound in the beginning
 unsigned long ctr_time_prv = 0; // Time of the start of the previous loop
 unsigned int time_loop_delay = 0; // Delay of last loop run
 unsigned char pin_led_cross_on = pin_led_red;  // Crossfade on/off value
@@ -229,6 +228,7 @@ void setup() {
   delay_red_green_random = random(delay_red_green_min, delay_red_green_max);
   pin_led_cross_off = pin_led_red;
   ctr_red = 1;
+	ctr_time = 10; // Need this for playing debug before main loop
   time_led_start = millis() - delay_red_green_random - 1; // Turn an LED on right away
 
   // mux outputs
@@ -237,7 +237,7 @@ void setup() {
   pinMode(muxPinC, OUTPUT);
   pinMode(muxPinD, OUTPUT);
   //mux input is analog
-  pinMode(muxInputPin, INPUT);
+  pinMode(muxInputPin, INPUT); 
 
   //Extra hardware
   pinMode(PIN_MIRROR_LIGHTS, OUTPUT);
@@ -250,21 +250,9 @@ void setup() {
   pinMode(pin_tcb380Active, INPUT);
   pinMode(pin_led_test, OUTPUT);
 
-//  led_test();
-//  lightBoxTest();
-//  solenoidTest();
-
-//  delay(500);
-//	debugSay(7451);
-//	delay(1000);
-	playDigit(1);
-	delay(100);
-	playDigit(2);
-	delay(100);
-	playDigit(3);
-	delay(100);
-	playDigit(4);
-
+  led_test();
+  lightBoxTest();
+  solenoidTest();
 }
 
 void loop() {
@@ -450,8 +438,10 @@ void loop() {
 
 unsigned char is_sound_playing() {  // Returns true if there is a sound playing
 	 if (digitalRead(pin_tcb380Active) == 0) { //Active low from mp3 module while sound is playing
-		 return TRUE;
+		digitalWrite(pin_led_test,HIGH);
+		return TRUE;
 	 } else {
+		 digitalWrite(pin_led_test,LOW);
 		 return FALSE;
 	 }
 }
@@ -524,7 +514,8 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
         led_level_change = 1;
       }
 
-      led_cross_on = led_level_change * led_bright;
+      led_cross_on = led_level_change * led_bright;	ctr_time = 10; // Need this for 
+
       led_cross_off = led_bright - (led_level_change * led_bright);
 
       if (led_cross_on >= led_bright || led_cross_off < 0) {  // Values too big or too small, just punt
@@ -774,7 +765,7 @@ void solenoidTest(){
 }
 
 
-unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
+unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds){
 
   if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > timeInMilliseconds) && !is_sound_playing()){
     if(TDEBUG & 16){
@@ -783,14 +774,6 @@ unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds = 0){
     }
     return TRUE;
   }
-	digitalWrite(pin_led_test,HIGH);
-	delay(500);
-	digitalWrite(pin_led_test,LOW);
-	delay(500);
-	digitalWrite(pin_led_test,HIGH);
-	delay(500);
-	digitalWrite(pin_led_test,LOW);
-	delay(500);
   return FALSE;
 } 
 
@@ -808,20 +791,11 @@ unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPla
       Serial.println(fileNumber);
       return TRUE;
   }
-  else if(readyToPlayNextMP3(delaySinceLastPlayed)){  
+  else if(readyToPlayNextMP3(delaySinceLastPlayed)){
     Serial.write(fileNumber);    
     timeLastFileCompleted = 0; //update timer
-    delay(1);
     return TRUE;
   }
-	digitalWrite(pin_led_test,HIGH);
-	delay(500);
-	digitalWrite(pin_led_test,LOW);
-	delay(500);
-	digitalWrite(pin_led_test,HIGH);
-	delay(500);
-	digitalWrite(pin_led_test,LOW);
-	delay(500);
   return FALSE;
 }
 
@@ -929,14 +903,12 @@ void playDigit(unsigned char num) { // Say a single digit
 			fileNumber = SND_9;
 			break;
 	}
-	// Wait for us to be finished playing the last sound
-		while (is_sound_playing()) { // Playing a sound, wait
-			digitalWrite(pin_led_test,HIGH);
-			delay(10);
+
+		while (playFile(fileNumber,0) == FALSE) {
+			delay(10);  // Make sure the file gets played
 		}
-		digitalWrite(pin_led_test,LOW);
-		playFile(fileNumber,0);
-		delay(1);
+		timeLastFileCompleted = 1; // Allow immediate playing of next sound...
+		delay(500);
 }
 
 //Set TDEBUG to serial debug and uses commands below to
