@@ -137,12 +137,14 @@ unsigned char asnd_leave[] = {
 
 #define PLAYER_DISTANCE_TIMEOUT_LENGTH 20000 //milliseconds
 
-#define pin_led_test 13
 
 // Variables you might want to change
 #define pin_led_red 9      // Red LED pin
 #define pin_led_green 10   // Green LED pin
 #define pin_led_uv 11      // UV LED pin
+#define pin_led_finger_white_red 13// White = low, Red = high
+#define pin_led_finger_blue 8 // Blue LED strip to right
+#define pin_led_finger_green 12 // Green LED strip to left
 #define pin_face_sen 14    // Face sensor pin
 #define delay_red_green_min 5000 // minimum time red/green is on
 #define delay_red_green_max 10000 // maximum time red/green is on
@@ -264,7 +266,9 @@ void setup() {
   Serial.write(0xE0); //Set Volume 0xC8-E7
   delay(50);
   pinMode(pin_tcb380Active, INPUT);
-  pinMode(pin_led_test, OUTPUT);
+  pinMode(pin_led_finger_white_red, OUTPUT);
+  pinMode(pin_led_finger_green, OUTPUT);
+  pinMode(pin_led_finger_blue, OUTPUT);
 
   //POST Routine
   //led_test();
@@ -582,10 +586,8 @@ void loop() {
 
 unsigned char is_sound_playing() {  // Returns true if there is a sound playing
 	 if (digitalRead(pin_tcb380Active) == 0) { //Active low from mp3 module while sound is playing
-		digitalWrite(pin_led_test,HIGH);
 		return TRUE;
 	 } else {
-		 digitalWrite(pin_led_test,LOW);
 		 return FALSE;
 	 }
 }
