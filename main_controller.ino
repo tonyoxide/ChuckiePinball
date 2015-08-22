@@ -17,7 +17,8 @@
 #define DEBUG_MACHINE_STATE 8
 #define DEBUG_MP3 16
 #define DEBUG_SERIAL 32
-unsigned char TDEBUG = DEBUG_SERIAL | DEBUG_MP3;
+//unsigned char TDEBUG = DEBUG_SERIAL | DEBUG_MACHINE_STATE | DEBUG_MP3;
+unsigned char TDEBUG = 0;
 
 // Defines for all of the sound files
 //1,01,One
@@ -101,9 +102,11 @@ unsigned char TDEBUG = DEBUG_SERIAL | DEBUG_MP3;
 
 // Create arrays for the sound file types
 unsigned char asnd_laugh[] = {
-  11,12,13,14};
+  12,13};
+unsigned char asnd_fingers[] = {
+  27, 28}; 
 unsigned char asnd_attract[] = {
-  14,15,16,17,18,19.20,21,22,23,24};
+  15,16,17,18,19.20,21,22,23,24};
 unsigned char asnd_leave[] = {
   38,39};
 
@@ -115,21 +118,24 @@ unsigned char asnd_leave[] = {
 #define PLAYER_DETECTED 1
 #define COUNTING_PLAYER_FINGERS 2
 #define SOLENOID_ACTIVE 3
-#define ALIGN_PLAYER_TO_MIRROR 4
-#define PLAYER_ALIGNED_TO_MIRROR 5
-#define WAIT_FOR_PLAYER_TO_LEAVE 6
+#define LAUGH_AT_PLAYER 4
+#define GOTCHA 5
+#define ALIGN_PLAYER_TO_MIRROR 6
+#define PLAYER_ALIGNED_TO_MIRROR 7
+#define LAUGH_AT_PLAYER_AGAIN 8
+#define WAIT_FOR_PLAYER_TO_LEAVE 9
 
 //Pinout
 #define PIN_MIRROR_LIGHTS 6
 #define PIN_SOLENOID 4
 
 //Distance
-#define DISTANCE_SENSOR_TOO_FAR 100
-#define DISTANCE_SENSOR_TOO_CLOSE 120
+#define DISTANCE_SENSOR_TOO_FAR 120
+#define DISTANCE_SENSOR_TOO_CLOSE 150
 
 #define FINGER_DEBOUCE_LENGTH 250 //counting in loop cycles right now
 
-#define PLAYER_DISTANCE_TIMEOUT_LENGTH 5000 //milliseconds
+#define PLAYER_DISTANCE_TIMEOUT_LENGTH 20000 //milliseconds
 
 #define pin_led_test 13
 
@@ -194,8 +200,12 @@ unsigned char totalFingersCounted = 0;
 unsigned char maxFingersCounted = 0;
 unsigned char lastFingerCount = 0;
 unsigned long fingerDebounceCounter = 0;
+
+unsigned long fingerCountTimeout = 0;
+unsigned char fingerCountTimeoutStarted = false; //Set on timeout begin
+
 unsigned char countSpoken = FALSE;
-#define FINGER_DEBOUNCE_LENGTH 50
+#define FINGER_COUNT_TIMEOUT_LENGTH 20000
 unsigned long solenoidTimer = 0;
 unsigned char solenoidComplete = false;
 
@@ -213,16 +223,20 @@ unsigned char machineState = NO_PLAYER_DETECTED; //Check define tablefor states
 unsigned char userInProximity = 0;
 unsigned int  userDistance = 0;
 unsigned int fingerDebounceCount = 0;
-unsigned int playerDetectedTime = 0;
+unsigned long playerDetectedTime = 0;
+unsigned char playerDetectedTimeoutStarted = false;
 
 //Sound file flags
-unsigned char timeToLaugh = FALSE;
-unsigned char laughPlayed = FALSE;
-unsigned char distanceAchievedPlayed = FALSE;
-unsigned char nowLookIntoMyMirrorPlayed = FALSE;
+unsigned char timeToLaugh = false;
+unsigned char laughPlayed = false;
+unsigned char distanceAchievedPlayed = false;
+unsigned char nowLookIntoMyMirrorPlayed = false;
 unsigned char selectRandomTaunt = 0;
 unsigned char selectRandomLeavePhrase = 0;
-unsigned char leaveFilePlayed = FALSE;
+unsigned char selectRandomLaugh = 0;
+unsigned char leaveFilePlayed = false;
+unsigned char selectRandomFingersPhrase = 0;
+unsigned char lastFilePlaySuccess = false;
 
 void setup() {
   randomSeed(analogRead(0));
@@ -252,10 +266,12 @@ void setup() {
   pinMode(pin_tcb380Active, INPUT);
   pinMode(pin_led_test, OUTPUT);
 
+  //POST Routine
   //led_test();
   //lightBoxTest();
   //solenoidTest();
-  debugSay(123);
+  //playFile(SND_DONECOUNT, 0);
+  //debugSay(123);
 }
 
 void loop() {
@@ -275,7 +291,7 @@ void loop() {
   
     totalFingersCounted = scanFingerSensors();
     if(lastFingerCount != totalFingersCounted){
-      fingerDebounceCounter = ctr_time;
+      fingerDebounceCounter = millis();
     }
 		
     userInProximity = readFrontPIRSensor(); //userInProximity holds the PIR Sensor
@@ -298,7 +314,7 @@ void loop() {
     /*if(TDEBUG & DEBUG_SERIAL){
       Serial.println("Taunt players!");
     }*/
-    playFile(asnd_attract[selectRandomTaunt], 10000);
+    playFile(asnd_attract[selectRandomTaunt], 15000);
   }
 	
   //Finger count routine begins - overrides PIR   
@@ -307,8 +323,17 @@ void loop() {
     (machineState == PLAYER_DETECTED)))
   {
     machineState = COUNTING_PLAYER_FINGERS;
+    
+    if(fingerCountTimeoutStarted == false){
+      fingerCountTimeout = millis(); //Initiate timeout counter
+      fingerCountTimeoutStarted = true; //Set timeout flag
+    }
+    
+        
     if(TDEBUG & DEBUG_SERIAL){
       Serial.println("Counting Fingers");
+      Serial.print("Counting Timeout: ");
+      Serial.println(fingerCountTimeout);
     }
   }
 
@@ -316,17 +341,30 @@ void loop() {
   //until the number of fingers is stable
   if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted < 10))
   {
-    playFile(totalFingersCounted, 100);
+    playFile(totalFingersCounted, 100); //For zero, play file will return false
+    
+    //If the timeout counter has been initiated, check against timeout length
+    if(fingerCountTimeoutStarted == true){
+      if(checkForTimeout(fingerCountTimeout, FINGER_COUNT_TIMEOUT_LENGTH)){ //the timeout has been reached        
+        lastFilePlaySuccess = playFile(SND_DONECOUNT, 100); //Tell the player the count is done
+        if(lastFilePlaySuccess){
+          fingerCountTimeoutStarted = false; //reset flag
+          machineState = ALIGN_PLAYER_TO_MIRROR; //go on to mirror alignment
+          lastFilePlaySuccess = false;
+        }        
+      }           
+    }
+
     /*if(TDEBUG & 16){
      Serial.println((totalFingersCounted-1) + 48);
      }*/
   }  
 	
   if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted == 10) && !timeToLaugh){
-    countSpoken = playFile(totalFingersCounted, 100);  //Max fingers achieved
-    if(countSpoken){
-      countSpoken = FALSE;
-      solenoidTimer = ctr_time;
+    lastFilePlaySuccess = playFile(totalFingersCounted, 100);  //Max fingers achieved
+    if(lastFilePlaySuccess){
+      lastFilePlaySuccess = false;
+      solenoidTimer = millis();
       timeToLaugh = TRUE;
       machineState = SOLENOID_ACTIVE;
       if(TDEBUG & DEBUG_SERIAL){
@@ -335,103 +373,147 @@ void loop() {
     }
   }
   
-  if(machineState == SOLENOID_ACTIVE){
-    whackSolenoid();
-    if(solenoidComplete){
-      machineState = ALIGN_PLAYER_TO_MIRROR;
+  //Run Solenoid Timer Routine
+  if(machineState == SOLENOID_ACTIVE){   
+    if(whackSolenoid()){
+      machineState = LAUGH_AT_PLAYER;
     }
   }
   
-  if((machineState == SOLENOID_ACTIVE) || (machineState == ALIGN_PLAYER_TO_MIRROR) && timeToLaugh){
-<<<<<<< HEAD
-    laughPlayed = playFile(SND_NINE, 0); //Minus one HAHAHAHA
-		
-=======
-    laughPlayed = playFile(SND_NINE, 10); //Minus one HAHAHAHA
-
->>>>>>> playFileTimeout
+  //Play Nine, Nine, Nine! while solenoid is running
+  if((machineState == SOLENOID_ACTIVE) && timeToLaugh){
+    lastFilePlaySuccess = playFile(SND_NINE, 10); //Minus one HAHAHAHA
     //Laugh complete - clear flag
-    if(laughPlayed){
-      timeToLaugh = FALSE; 
+    if(lastFilePlaySuccess){
+      lastFilePlaySuccess = false; //reset flag
+      timeToLaugh = false; //reset flag
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Nine Nine Nine!");
       }
     }
   }
+  
+  //Have a laugh at the player
+  if(machineState == LAUGH_AT_PLAYER){
+    selectRandomLaugh = random(sizeof(asnd_laugh));
+    lastFilePlaySuccess = playFile(asnd_laugh[selectRandomLaugh], 1000);
 
+    //Laugh complete - clear flag
+    if(lastFilePlaySuccess){
+      lastFilePlaySuccess = false; //reset flag
+      machineState = GOTCHA;
+      if(TDEBUG & DEBUG_SERIAL){
+        Serial.println("Ha Ha Ha Ho Ho HO!");
+      }
+    }
+  }
+
+  //Got you good, player
+  if(machineState == GOTCHA){
+    
+    lastFilePlaySuccess = playFile(SND_GOTCHA, 1000);
+
+    //Laugh complete - clear flag
+    if(lastFilePlaySuccess){
+      lastFilePlaySuccess = false; //reset flag
+      machineState = ALIGN_PLAYER_TO_MIRROR;
+      if(TDEBUG & DEBUG_SERIAL){
+        Serial.println("Gotcha!");
+      }
+    }
+  }
 
   //If the front PIR detects movement //Not implemented yet -- OR the distance sensor is below threshold
-  if((machineState == NO_PLAYER_DETECTED) && userInProximity){
+  if((machineState == NO_PLAYER_DETECTED) && userInProximity && !playerDetectedTimeoutStarted){
     machineState = PLAYER_DETECTED;
-    playFile(SND_COUNT, 0); //Let me count!
-    playerDetectedTime = millis();
+    
+    if(playerDetectedTimeoutStarted == false){ //if the timeout hasn't been initiated
+      playFile(SND_COUNT, 0); //Let me count!
+      playerDetectedTime = millis();  //Start timeout counter
+      playerDetectedTimeoutStarted = true; //Set flag
+    }
   }
 
   //Player in the area - Bark at them to come over
   if(machineState == PLAYER_DETECTED){
      if(checkForTimeout(playerDetectedTime, PLAYER_DISTANCE_TIMEOUT_LENGTH)){ //if the timeout hits, go back to no player detected
-       machineState = NO_PLAYER_DETECTED;
+       lastFilePlaySuccess = playFile(SND_SCARED,1000);
+       
+       if(lastFilePlaySuccess){
+         machineState = NO_PLAYER_DETECTED;
+         playerDetectedTimeoutStarted = false;
+         lastFilePlaySuccess = false;
+        }        
+
        if(TDEBUG & DEBUG_SERIAL){
          Serial.println("PIR Detect Timeout!");         
        }
+     }else{ //Timeout hasn't been reached, instruct player what to do
+       selectRandomFingersPhrase = random(sizeof(asnd_fingers));
+       playFile(asnd_fingers[selectRandomFingersPhrase], 4000);
      }
   }
-<<<<<<< HEAD
-	
-  //Count until timeout or user overrides by putting fingers in! 
-  if(playerDetectedTimeout > 0){
-    playerDetectedTimeout--; //Count down until timeout is complete
-    if(playerDetectedTimeout == 0){ //Timeout is complete 
-      machineState = NO_PLAYER_DETECTED;
-    }
-  }
-	
-=======
->>>>>>> playFileTimeout
+  
   //Add timer to call the user a spoilsport if they won't come
 
   //Begin Magic Mirror routine
   if(machineState == ALIGN_PLAYER_TO_MIRROR && !nowLookIntoMyMirrorPlayed){
     nowLookIntoMyMirrorPlayed = playFile(31, 1000);
   }
-    
-  if(machineState == ALIGN_PLAYER_TO_MIRROR){
-    //Guide user to optimal distance
-    
-      //If above threshold - speak "closer"
-      if(userDistance < DISTANCE_SENSOR_TOO_FAR){
-        playFile(0x21, 1500);
-      }
-      else if(userDistance > DISTANCE_SENSOR_TOO_CLOSE){
-        playFile(0x20, 1500);
-      }
-      else{ //User is the right distance
-        distanceAchievedPlayed = playFile(0x22, 100);
-        if(distanceAchievedPlayed){
-          distanceAchievedPlayed = FALSE;
-          nowLookIntoMyMirrorPlayed = FALSE;
-          machineState = PLAYER_ALIGNED_TO_MIRROR;
-          mirrorLightTimer = ctr_time;
-        }
+  else if((machineState == ALIGN_PLAYER_TO_MIRROR) && nowLookIntoMyMirrorPlayed){
+  //Guide user to optimal distance
+  
+    //If above threshold - speak "closer"
+    if(userDistance < DISTANCE_SENSOR_TOO_FAR){
+      playFile(0x20, 1000);
+    }
+    else if(userDistance > DISTANCE_SENSOR_TOO_CLOSE){
+      playFile(0x21, 1000);
+    }
+    else{ //User is the right distance
+      distanceAchievedPlayed = playFile(0x22, 1000);
+      if(distanceAchievedPlayed){
+        distanceAchievedPlayed = FALSE; //reset flag
+        nowLookIntoMyMirrorPlayed = FALSE; //reset flag
+        machineState = PLAYER_ALIGNED_TO_MIRROR;
+        //mirrorLightTimer = millis();
       }
     }
+  }
     
   //Instruct user to find their true selves
-  if(machineState == PLAYER_ALIGNED_TO_MIRROR && !is_sound_playing()){
-    
+  if(machineState == PLAYER_ALIGNED_TO_MIRROR){
     if(mirrorTimerStarted == FALSE){
-      mirrorLightTimer = ctr_time;
+      mirrorLightTimer = millis();
       mirrorTimerStarted = TRUE;
     }
-    flashMirrorLight();
+    if(flashMirrorLight()){ //flashMirrorLight will return true once it's complete
+      machineState = LAUGH_AT_PLAYER_AGAIN;
+    }
   }
+  
+  //Have another laugh at the player
+  if(machineState == LAUGH_AT_PLAYER_AGAIN){
+    selectRandomLaugh = random(sizeof(asnd_laugh));
+    lastFilePlaySuccess = playFile(asnd_laugh[selectRandomLaugh], 1000);
+
+    //Laugh complete - clear flag
+    if(lastFilePlaySuccess){
+      lastFilePlaySuccess = false; //reset flag
+      machineState = WAIT_FOR_PLAYER_TO_LEAVE;
+      if(TDEBUG & DEBUG_SERIAL){
+        Serial.println("Ha Ha Ha Ho Ho HO!");
+      }
+    }
+  }  
 
   if(machineState == WAIT_FOR_PLAYER_TO_LEAVE){
-    selectRandomLeavePhrase = random(sizeof(asnd_attract));
+    selectRandomLeavePhrase = random(sizeof(asnd_leave));
     leaveFilePlayed = playFile(asnd_leave[selectRandomLeavePhrase], 1000);
     
     if(leaveFilePlayed){
-      machineState = NO_PLAYER_DETECTED;
+      playerDetectedTimeoutStarted = false; //Couldn't find a better place for this flag change. Allow player detection again.
+      machineState = NO_PLAYER_DETECTED; //Back to start of the state machine
       leaveFilePlayed = FALSE;
     }
   }
@@ -743,7 +825,7 @@ unsigned int readMuxPin(unsigned char muxPin){
     digitalWrite(muxPinB, 0);
     digitalWrite(muxPinC, 1);
     digitalWrite(muxPinD, 1);      
-    delay(10);
+    delay(20);
     result = analogRead(muxInputPin);
     break;      
 
@@ -789,7 +871,9 @@ void solenoidTest(){
 
 unsigned char readyToPlayNextMP3(unsigned long timeInMilliseconds){
 
-  if((timeLastFileCompleted != 0) && ((ctr_time - timeLastFileCompleted) > timeInMilliseconds) && !is_sound_playing()){
+  unsigned long currentTime = millis();
+  
+  if((timeLastFileCompleted != 0) && ((currentTime - timeLastFileCompleted) > timeInMilliseconds) && !is_sound_playing()){
     if(TDEBUG & 16){
       Serial.println('timer : %l', ctr_time);
       Serial.println('time last completed: %l', timeLastFileCompleted);
@@ -832,41 +916,55 @@ unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPla
   return FALSE;
 }
 
+//timer for the solenoid
+//returns true when it's complete
+unsigned char whackSolenoid(){
+  
+   unsigned long currentTime = millis();
 
-void whackSolenoid(){
-
-  if((ctr_time -  solenoidTimer) > 200 && (ctr_time -  solenoidTimer) < 400){
+  if(((currentTime -  solenoidTimer) > 200) && ((currentTime -  solenoidTimer) < 400)){
     digitalWrite(PIN_SOLENOID, HIGH);
-  }else if((ctr_time -solenoidTimer) > 400){
+  }else if((currentTime - solenoidTimer) > 400){
     solenoidTimer = 0;
     digitalWrite(PIN_SOLENOID, LOW);
     machineState = ALIGN_PLAYER_TO_MIRROR; //
     solenoidComplete = true;
   }else{
     digitalWrite(PIN_SOLENOID, LOW);
+    return true;
   }
+  
+  return false;
 }
 
-void flashMirrorLight(){
-  if((ctr_time -  mirrorLightTimer) < 1200){
-    digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
-  }
-  else if((ctr_time -  mirrorLightTimer) < 1400){
+//timer for the mirror lights
+//returns true when it's complete
+unsigned char flashMirrorLight(){
+  unsigned long currentTime = millis();
+  
+  if((currentTime -  mirrorLightTimer) < 2200){
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
   }
-  else if((ctr_time -  mirrorLightTimer) < 1800){
+  else if((currentTime -  mirrorLightTimer) < 2700){
     digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
   }
-  else if((ctr_time -  mirrorLightTimer) < 2200){
+  else if((currentTime -  mirrorLightTimer) < 3200){
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+  }
+  else if((currentTime -  mirrorLightTimer) < 3700){
+    digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
   }else{
-    mirrorLightTimer = 0;
-    machineState = WAIT_FOR_PLAYER_TO_LEAVE;
+    
+    mirrorTimerStarted = TRUE; //Reset timer flag
+
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
     if(TDEBUG & 32){
       Serial.println("Mirror Flash Complete!");
     }
+    return true;
   }
+  
+  return false;
 }
 
 void debugSay(unsigned int num) { // Say each digit of a number
@@ -975,15 +1073,15 @@ unsigned char checkForTimeout(unsigned long initialTime, unsigned long timeoutDu
 
   unsigned long currentTime = millis();
   
-   /*if(TDEBUG & DEBUG_SERIAL){
+   if(TDEBUG & DEBUG_SERIAL){
       Serial.println("Check For Timeout");
       Serial.print("Current time: ");
       Serial.println(currentTime);
       Serial.print("Initial Time: ");
       Serial.println(initialTime);
-    }*/
+    }
 
-  if((millis() -  initialTime) > timeoutDuration){
+  if((currentTime -  initialTime) >= timeoutDuration){
     return true;
   }else{
     return false;
