@@ -331,6 +331,10 @@ void loop() {
     if(fingerCountTimeoutStarted == false){
       fingerCountTimeout = millis(); //Initiate timeout counter
       fingerCountTimeoutStarted = true; //Set timeout flag
+      if(TDEBUG & DEBUG_MACHINE_STATE){
+        Serial.print("state: ");
+        Serial.println(machineState);
+      }      
     }
     
         
@@ -355,6 +359,10 @@ void loop() {
           fingerCountTimeoutStarted = false; //reset flag
           machineState = ALIGN_PLAYER_TO_MIRROR; //go on to mirror alignment
           lastFilePlaySuccess = false;
+          if(TDEBUG & DEBUG_MACHINE_STATE){
+            Serial.print("state: ");
+            Serial.println(machineState);
+          }          
         }        
       }           
     }
@@ -374,13 +382,10 @@ void loop() {
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Whack!");
       }
-    }
-  }
-  
-  //Run Solenoid Timer Routine
-  if(machineState == SOLENOID_ACTIVE){   
-    if(whackSolenoid()){
-      machineState = LAUGH_AT_PLAYER;
+      if(TDEBUG & DEBUG_MACHINE_STATE){
+        Serial.print("state: ");
+        Serial.println(machineState);
+      }
     }
   }
   
@@ -394,6 +399,17 @@ void loop() {
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Nine Nine Nine!");
       }
+      if(TDEBUG & DEBUG_MACHINE_STATE){
+        Serial.print("state: ");
+        Serial.println(machineState);
+      }      
+    }
+  }
+  
+  //Run Solenoid Timer Routine
+  if(machineState == SOLENOID_ACTIVE){   
+    if(whackSolenoid()){
+      machineState = LAUGH_AT_PLAYER;
     }
   }
   
@@ -424,6 +440,10 @@ void loop() {
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Gotcha!");
       }
+      if(TDEBUG & DEBUG_MACHINE_STATE){
+        Serial.print("state: ");
+        Serial.println(machineState);
+      }      
     }
   }
 
@@ -447,6 +467,10 @@ void loop() {
          machineState = NO_PLAYER_DETECTED;
          playerDetectedTimeoutStarted = false;
          lastFilePlaySuccess = false;
+          if(TDEBUG & DEBUG_MACHINE_STATE){
+            Serial.print("state: ");
+            Serial.println(machineState);
+          }         
         }        
 
        if(TDEBUG & DEBUG_SERIAL){
@@ -493,6 +517,10 @@ void loop() {
     }
     if(flashMirrorLight()){ //flashMirrorLight will return true once it's complete
       machineState = LAUGH_AT_PLAYER_AGAIN;
+      if(TDEBUG & DEBUG_MACHINE_STATE){
+        Serial.print("state: ");
+        Serial.println(machineState);
+      }
     }
   }
   
@@ -508,6 +536,10 @@ void loop() {
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Ha Ha Ha Ho Ho HO!");
       }
+      if(TDEBUG & DEBUG_MACHINE_STATE){
+        Serial.print("state: ");
+        Serial.println(machineState);
+      }
     }
   }  
 
@@ -519,6 +551,10 @@ void loop() {
       playerDetectedTimeoutStarted = false; //Couldn't find a better place for this flag change. Allow player detection again.
       machineState = NO_PLAYER_DETECTED; //Back to start of the state machine
       leaveFilePlayed = FALSE;
+      if(TDEBUG & DEBUG_MACHINE_STATE){
+        Serial.print("state: ");
+        Serial.println(machineState);
+      }
     }
   }
 
@@ -527,10 +563,10 @@ void loop() {
   //Back to  outer loop
 
   //Serial.println(userDistance);
-  if(TDEBUG & 8){
+  /*if(TDEBUG & DEBUG_MACHINE_STATE){
     Serial.print("state: ");
     Serial.println(machineState);
-  }
+  }*/
   //Check Rear PIR - yell at hooligans behind the machine
 
   //digitalWrite(PIN_SOLENOID, LOW); //Safety - Always deactivate the solenoid - Can't do this gotta be asyncronous to play NINE! NINE! NINE!
@@ -924,14 +960,16 @@ unsigned char whackSolenoid(){
   
   unsigned long currentTime = millis();
 
-  if(((currentTime -  solenoidTimer) > 200) && ((currentTime -  solenoidTimer) < 400)){
+  if((currentTime -  solenoidTimer) < 400){
     digitalWrite(PIN_SOLENOID, HIGH);
-  }else if((currentTime - solenoidTimer) > 400){
-    solenoidTimer = 0;
-    digitalWrite(PIN_SOLENOID, LOW);
-    machineState = ALIGN_PLAYER_TO_MIRROR; //
-    solenoidComplete = true;
-  }else{
+  }
+  else{
+    solenoidComplete = false;
+    machineState = LAUGH_AT_PLAYER;
+    if(TDEBUG & DEBUG_MACHINE_STATE){
+      Serial.print("state: ");
+      Serial.println(machineState);
+    }      
     digitalWrite(PIN_SOLENOID, LOW);
     return true;
   }
@@ -947,17 +985,23 @@ unsigned char flashMirrorLight(){
   if((currentTime -  mirrorLightTimer) < 2200){
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
   }
-  else if((currentTime -  mirrorLightTimer) < 2700){
+  else if((currentTime -  mirrorLightTimer) < 2250){
     digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
   }
-  else if((currentTime -  mirrorLightTimer) < 3200){
+  else if((currentTime -  mirrorLightTimer) < 2500){
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
   }
-  else if((currentTime -  mirrorLightTimer) < 3700){
+  else if((currentTime -  mirrorLightTimer) < 2750){
+    digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
+  }
+  else if((currentTime -  mirrorLightTimer) < 3000){
+    digitalWrite(PIN_MIRROR_LIGHTS, LOW);
+  }
+  else if((currentTime -  mirrorLightTimer) < 3250){
     digitalWrite(PIN_MIRROR_LIGHTS, HIGH);
   }else{
     
-    mirrorTimerStarted = TRUE; //Reset timer flag
+    mirrorTimerStarted = false; //Reset timer flag
 
     digitalWrite(PIN_MIRROR_LIGHTS, LOW);
     if(TDEBUG & 32){
