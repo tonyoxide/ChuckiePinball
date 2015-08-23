@@ -141,7 +141,7 @@ unsigned char asnd_leave[] = {
 #define pin_led_red 9      // Red LED pin
 #define pin_led_green 10   // Green LED pin
 #define pin_led_uv 11      // UV LED pin
-#define pin_led_finger_white_red 13// White = low, Red = high
+#define pin_led_finger_white_red 13 // White = hight, Red = low
 #define pin_led_finger_blue 8 // Blue LED strip to right
 #define pin_led_finger_green 12 // Green LED strip to left
 
@@ -240,6 +240,13 @@ unsigned char leaveFilePlayed = false;
 unsigned char selectRandomFingersPhrase = 0;
 unsigned char lastFilePlaySuccess = false;
 
+// Finger light flags
+unsigned long flStartTime = 0;
+unsigned char flFlashCtr = 0;
+#define flFlashOnTime 2000
+#define flFlashOffTime 500
+#define flFlashCount 5
+
 void setup() {
   randomSeed(analogRead(0));
   // Turn on Green LED
@@ -271,7 +278,7 @@ void setup() {
   pinMode(pin_led_finger_blue, OUTPUT);
 
   //POST Routine
-  //led_test();
+  led_test();
   //lightBoxTest();
   //solenoidTest();
   //playFile(SND_DONECOUNT, 0);
@@ -287,7 +294,7 @@ void loop() {
 
   // See what we should do with the illumination LEDs
   panel_checkFade();
-
+	flashRedFingerLight(FALSE);
   //If we're in serial debug we need to skip the input read routines
   if(!(TDEBUG & 32)){
     //Scan the mux to count fingers
@@ -391,6 +398,8 @@ void loop() {
   
   //Play Nine, Nine, Nine! while solenoid is running
   if((machineState == SOLENOID_ACTIVE) && timeToLaugh){
+		// Flash the red light to indicate finger loss
+		flashRedFingerLight(TRUE);
     lastFilePlaySuccess = playFile(SND_NINE, 10); //Minus one HAHAHAHA
     //Laugh complete - clear flag
     if(lastFilePlaySuccess){
@@ -578,6 +587,39 @@ void loop() {
 
   // Delay at the end of the loop (optional)
   delay(loop_delay);
+}
+
+void flashRedFingerLight(unsigned char beginFlash) {  // If this is the beginning of a flash, set this flag
+	unsigned long flashTotalTime = flFlashCtr * (flFlashOffTime + flFlashOnTime); 	// Total time we will flash
+	unsigned int onTime,offTime;
+	
+	if (beginFlash && flStartTime == 0) { // Reset timer and turn the light on
+		flStartTime = ctr_time;
+		digitalWrite(pin_led_finger_white_red, LOW);
+	} else if (flStartTime > 0) { // Currently flashing
+		unsigned long flashTime = ctr_time - flStartTime; // Time we have flashed so far
+		// See if we should transition
+		for (unsigned char x=1; x<=flFlashCtr; x++) {
+			onTime = x * flFlashOnTime;
+			offTime = onTime + flFlashOffTime;
+			
+			if (flashTime >= 0 && flashTime <= onTime) { // Turn it on
+				digitalWrite(pin_led_finger_white_red, LOW);
+				return;
+			} else if (flashTime > onTime && flashTime < offTime) { // Turn it off
+				digitalWrite(pin_led_finger_white_red, HIGH);
+				return;
+			}
+		}
+		// See if we should end the loop
+		if (flashTime > flashTotalTime) { // Reset the LED to white and the reset counter
+			digitalWrite(pin_led_finger_white_red, HIGH);
+			flStartTime = 0;
+		}
+	} else { // Just turn on the white LED
+		digitalWrite(pin_led_finger_white_red, HIGH);
+	}
+	// Do nothing because beginFlash is false and we aren't flashing...
 }
 
 unsigned char is_sound_playing() {  // Returns true if there is a sound playing
@@ -880,11 +922,18 @@ void led_test() { // Startup test for LEDs
 		analogWrite(pin_led_red, 255);
 		analogWrite(pin_led_green, 255);
 		analogWrite(pin_led_uv, 255);
+		digitalWrite(pin_led_finger_white_red, LOW);
+		digitalWrite(pin_led_finger_blue, HIGH);
+		digitalWrite(pin_led_finger_green, HIGH);
+
 		delay(250);
 		analogWrite(pin_led_red, 0);
 		analogWrite(pin_led_green, 0);
 	  analogWrite(pin_led_uv, 0);
-		delay(250);
+		digitalWrite(pin_led_finger_white_red, HIGH);
+		digitalWrite(pin_led_finger_blue, LOW);
+		digitalWrite(pin_led_finger_green, LOW);
+		delay(500);
 	}
 }
 
