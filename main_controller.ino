@@ -254,7 +254,7 @@ unsigned long flStartTime = 0;
 #define flFlashCount 5
 // Case light flags
 unsigned long caseFlashTime = 0;
-#define caseFlashRate 150
+#define caseFlashRate 6 // This is a binary shift so 8 = 256ms, 7 = 128ms, 6 = 64ms;
 
 void setup() {
   randomSeed(analogRead(0));
@@ -418,7 +418,7 @@ void loop() {
           }          
         }        
       } else {
-	playFile(totalFingersCounted, 100); //For zero, play file will return false
+				playFile(totalFingersCounted, 100); //For zero, play file will return false
       }
     }
 
@@ -1318,7 +1318,7 @@ void resetAllStateFlags(){
 void led_internal_green_on(unsigned char turnOn) {
 	if (turnOn) {
 		// See if we should turn on or off
-		if ((ctr_time / caseFlashRate) % 2 == 1) {
+		if ((ctr_time >> caseFlashRate) % 2 == 1) {
 			digitalWrite(pin_led_finger_green, HIGH);
 		}	else {
 			digitalWrite(pin_led_finger_green, LOW);
@@ -1331,7 +1331,7 @@ void led_internal_green_on(unsigned char turnOn) {
 void led_internal_blue_on(unsigned char turnOn) {
 	if (turnOn) {
 		// See if we should turn on or off
-		if ((ctr_time / caseFlashRate) % 2 == 0) {
+		if ((ctr_time >> caseFlashRate) % 2 == 0) {
 			digitalWrite(pin_led_finger_blue, HIGH);
 		}	else {
 			digitalWrite(pin_led_finger_blue, LOW);
