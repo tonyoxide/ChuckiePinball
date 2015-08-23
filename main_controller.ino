@@ -418,8 +418,8 @@ void loop() {
           }          
         }        
       } else {
-				playFile(totalFingersCounted, 100); //For zero, play file will return false
-			}       
+	playFile(totalFingersCounted, 100); //For zero, play file will return false
+      }
     }
 
     /*if(TDEBUG & 16){
@@ -433,6 +433,7 @@ void loop() {
       lastFilePlaySuccess = false;
       solenoidTimer = millis();
       machineState = SOLENOID_ACTIVE;
+      fingerCountTimeoutStarted = false; //reset flag
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Whack!");
       }
@@ -454,6 +455,7 @@ void loop() {
     if(whackSolenoid() && lastFilePlaySuccess){
       machineState = LAUGH_AT_PLAYER;
       lastFilePlaySuccess = false; //reset flag
+      fingerCountTimeoutStarted = false; //reset flag
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Nine Nine Nine!");
       }
