@@ -137,14 +137,12 @@ unsigned char asnd_leave[] = {
 
 #define PLAYER_DISTANCE_TIMEOUT_LENGTH 20000 //milliseconds
 
+#define pin_led_test 13
 
 // Variables you might want to change
 #define pin_led_red 9      // Red LED pin
 #define pin_led_green 10   // Green LED pin
 #define pin_led_uv 11      // UV LED pin
-#define pin_led_finger_white_red 13 // White = high, Red = low
-#define pin_led_finger_blue 8 // Blue LED strip to right
-#define pin_led_finger_green 12 // Green LED strip to left
 #define pin_face_sen 14    // Face sensor pin
 #define delay_red_green_min 5000 // minimum time red/green is on
 #define delay_red_green_max 10000 // maximum time red/green is on
@@ -209,6 +207,7 @@ unsigned char fingerCountTimeoutStarted = false; //Set on timeout begin
 unsigned char countSpoken = FALSE;
 #define FINGER_COUNT_TIMEOUT_LENGTH 20000
 #define MIRROR_TIMEOUT_LENGTH 20000
+#define WAIT_TO_LEAVE_TIMEOUT_LENGTH 15000
 unsigned long solenoidTimer = 0;
 unsigned char solenoidComplete = false;
 
@@ -247,12 +246,6 @@ unsigned char selectRandomLaugh = 0;
 unsigned char leaveFilePlayed = false;
 unsigned char selectRandomFingersPhrase = 0;
 unsigned char lastFilePlaySuccess = false;
-// Finger light flags
-unsigned long flStartTime = 0;
-unsigned char flFlashCtr = 0;
-#define flFlashOnTime 2000
-#define flFlashOffTime 500
-#define flFlashCount 5
 
 void setup() {
   randomSeed(analogRead(0));
@@ -278,18 +271,17 @@ void setup() {
   //TCB380 Initilization
   Serial.begin(4800);
   Serial.write(0xE0); //Set Volume 0xC8-E7
-  delay(50);
+  delay(100);
   pinMode(pin_tcb380Active, INPUT);
-  pinMode(pin_led_finger_white_red, OUTPUT);
-  pinMode(pin_led_finger_green, OUTPUT);
-  pinMode(pin_led_finger_blue, OUTPUT);
+  pinMode(pin_led_test, OUTPUT);
 
   //POST Routine
-  led_test();
+  //led_test();
   //lightBoxTest();
   //solenoidTest();
   //playFile(SND_DONECOUNT, 0);
   //debugSay(123);
+  playFile(SND_TWOFACE, 0); //Play something at start up since the bark takes a while
 }
 
 void loop() {
@@ -302,7 +294,6 @@ void loop() {
   // See what we should do with the illumination LEDs
   panel_checkFade();
 
-	flashRedFingerLight(FALSE);
   //If we're in serial debug we need to skip the input read routines
   if(!(TDEBUG & 32)){
     //Scan the mux to count fingers
@@ -344,13 +335,14 @@ void loop() {
     machineState = COUNTING_PLAYER_FINGERS;
     
     if(fingerCountTimeoutStarted == false){
+      playerDetectedTimeoutStarted = false; //Gotta reset the flag if we jump into the counter
       fingerCountTimeout = millis(); //Initiate timeout counter
       fingerCountTimeoutStarted = true; //Set timeout flag
           
       if(TDEBUG & DEBUG_MACHINE_STATE){
         Serial.print("state: ");
         Serial.println(machineState);
-      }      
+      }
     }
     
         
@@ -379,9 +371,9 @@ void loop() {
           if(TDEBUG & DEBUG_MACHINE_STATE){
             Serial.print("state: ");
             Serial.println(machineState);
-          }          
-        }        
-      }           
+          }
+        }
+      }
     }
 
     /*if(TDEBUG & 16){
@@ -390,11 +382,10 @@ void loop() {
   }
 	
   if((machineState == COUNTING_PLAYER_FINGERS) && (totalFingersCounted == 10) && !timeToLaugh){
-    lastFilePlaySuccess = playFile(totalFingersCounted, 100);  //Max fingers achieved
+    lastFilePlaySuccess = playFile(totalFingersCounted, 200);  //Max fingers achieved
     if(lastFilePlaySuccess){
       lastFilePlaySuccess = false;
       solenoidTimer = millis();
-      timeToLaugh = TRUE;
       machineState = SOLENOID_ACTIVE;
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Whack!");
@@ -408,30 +399,25 @@ void loop() {
   }    
   
   //Play Nine, Nine, Nine! while solenoid is running
-  if((machineState == SOLENOID_ACTIVE) && timeToLaugh){
-		// Flash the red light to indicate finger loss
-		flashRedFingerLight(TRUE);
-    lastFilePlaySuccess = playFile(SND_NINE, 10); //Minus one HAHAHAHA
-    //Laugh complete - clear flag
-    if(lastFilePlaySuccess){
+  if(machineState == SOLENOID_ACTIVE){
+    
+    if(!lastFilePlaySuccess){
+      lastFilePlaySuccess = playFile(SND_NINE, 50); //Minus one HAHAHAHA
+    }
+    
+    if(whackSolenoid() && lastFilePlaySuccess){
+      machineState = LAUGH_AT_PLAYER;
+      
       lastFilePlaySuccess = false; //reset flag
-      timeToLaugh = false; //reset flag
       if(TDEBUG & DEBUG_SERIAL){
         Serial.println("Nine Nine Nine!");
       }
       if(TDEBUG & DEBUG_MACHINE_STATE){
         Serial.print("state: ");
         Serial.println(machineState);
-      }      
+      }            
     }
-  }
-  
-  //Run Solenoid Timer Routine
-  if(machineState == SOLENOID_ACTIVE){   
-    if(whackSolenoid()){
-      machineState = LAUGH_AT_PLAYER;
-    }
-  }
+ }    
   
   //Have a laugh at the player
   if(machineState == LAUGH_AT_PLAYER){
@@ -469,14 +455,25 @@ void loop() {
   }
 
   //If the front PIR detects movement //Not implemented yet -- OR the distance sensor is below threshold
-  if((machineState == NO_PLAYER_DETECTED) && userInProximity && !playerDetectedTimeoutStarted){
-    machineState = PLAYER_DETECTED;
+  //if((machineState == NO_PLAYER_DETECTED) && userInProximity && !playerDetectedTimeoutStarted){    
+    if((machineState == NO_PLAYER_DETECTED) && userInProximity){
     
-    if(playerDetectedTimeoutStarted == false){ //if the timeout hasn't been initiated
-      playFile(SND_COUNT, 0); //Let me count!
+    lastFilePlaySuccess = playFile(SND_COUNT, 0); //Let me count!
+    
+    if(lastFilePlaySuccess){
+       lastFilePlaySuccess = false;
+       machineState = PLAYER_DETECTED;  
+       if(TDEBUG & DEBUG_MACHINE_STATE){
+          Serial.print("state: ");
+          Serial.println(machineState);
+        }
+    }
+    
+    if(playerDetectedTimeoutStarted == false){ //if the timeout hasn't been initiated      
       playerDetectedTime = millis();  //Start timeout counter
       playerDetectedTimeoutStarted = true; //Set flag
     }
+        
   }
 
   //Player in the area - Bark at them to come over
@@ -491,7 +488,7 @@ void loop() {
           if(TDEBUG & DEBUG_MACHINE_STATE){
             Serial.print("state: ");
             Serial.println(machineState);
-          }         
+          }
         }        
 
        if(TDEBUG & DEBUG_SERIAL){
@@ -525,7 +522,7 @@ void loop() {
       playFile(0x21, 1500);
     }
     else{ //User is the right distance
-      distanceAchievedPlayed = playFile(0x22, 100);
+      distanceAchievedPlayed = playFile(0x22, 1000);
       if(distanceAchievedPlayed){
         distanceAchievedPlayed = false; //reset flag
         nowLookIntoMyMirrorPlayed = false; //reset flag
@@ -590,29 +587,34 @@ void loop() {
   }  
 
   if(machineState == WAIT_FOR_PLAYER_TO_LEAVE){
-    //selectRandomLeavePhrase = random(sizeof(asnd_leave));
+    selectRandomLeavePhrase = random(sizeof(asnd_leave));
     //leaveFilePlayed = 
     
-    if(waitForPlayerToLeaveTimeoutStarted = false){
+    if(waitForPlayerToLeaveTimeoutStarted == false){
       waitForPlayerToLeaveTimeout = millis();
       waitForPlayerToLeaveTimeoutStarted = true;
-      playFile(asnd_leave[selectRandomLeavePhrase], 2000);
+      //playFile(asnd_leave[selectRandomLeavePhrase], 2000);
     }
     
-    if(leaveFilePlayed){
-      leaveFilePlayed = FALSE;
+    /*if(lastFilePlaySuccess == false){
+      lastFilePlaySuccess = playFile(asnd_leave[selectRandomLeavePhrase], 2000);      
       if(TDEBUG & DEBUG_MACHINE_STATE){
         Serial.print("state: ");
         Serial.println(machineState);
       }
-    }
+    }*/
+    
+    playFile(asnd_leave[selectRandomLeavePhrase], 5000);
     
     //If the timeout counter has been initiated, check against timeout length
     if(waitForPlayerToLeaveTimeoutStarted == true){
-      if(checkForTimeout(waitForPlayerToLeaveTimeout, FINGER_COUNT_TIMEOUT_LENGTH)){ //the timeout has been reached        
+      if(checkForTimeout(waitForPlayerToLeaveTimeout, WAIT_TO_LEAVE_TIMEOUT_LENGTH)){ //the timeout has been reached        
           playerDetectedTimeoutStarted = false; //Couldn't find a better place for this flag change. Allow player detection again.
           machineState = NO_PLAYER_DETECTED; //Back to start of the state machine
+          lastFilePlaySuccess = false;
           waitForPlayerToLeaveTimeoutStarted = false; //reset flag
+          
+          resetAllStateFlags(); //All the flags should already be cleared right?!?! Well in case one got missed...
           
           if(TDEBUG & DEBUG_MACHINE_STATE){
             Serial.print("state: ");
@@ -644,42 +646,12 @@ void loop() {
   delay(loop_delay);
 }
 
-void flashRedFingerLight(unsigned char beginFlash) {  // If this is the beginning of a flash, set this flag
-	unsigned long flashTotalTime = flFlashCtr * (flFlashOffTime + flFlashOnTime); 	// Total time we will flash
-	unsigned int onTime,offTime;
-	
-	if (beginFlash && flStartTime == 0) { // Reset timer and turn the light on
-		flStartTime = ctr_time;
-		digitalWrite(pin_led_finger_white_red, LOW);
-	} else if (flStartTime > 0) { // Currently flashing
-		unsigned long flashTime = ctr_time - flStartTime; // Time we have flashed so far
-		// See if we should transition
-		for (unsigned char x=1; x<=flFlashCtr; x++) {
-			onTime = x * flFlashOnTime;
-			offTime = onTime + flFlashOffTime;
-			
-			if (flashTime >= 0 && flashTime <= onTime) { // Turn it on
-				digitalWrite(pin_led_finger_white_red, LOW);
-				return;
-			} else if (flashTime > onTime && flashTime < offTime) { // Turn it off
-				digitalWrite(pin_led_finger_white_red, HIGH);
-				return;
-			}
-		}
-		// See if we should end the loop
-		if (flashTime > flashTotalTime) { // Reset the LED to white and the reset counter
-			digitalWrite(pin_led_finger_white_red, HIGH);
-			flStartTime = 0;
-		}
-	} else { // Just turn on the white LED
-		digitalWrite(pin_led_finger_white_red, HIGH);
-	}
-	// Do nothing because beginFlash is false and we aren't flashing...
-}
 unsigned char is_sound_playing() {  // Returns true if there is a sound playing
 	 if (digitalRead(pin_tcb380Active) == 0) { //Active low from mp3 module while sound is playing
+		digitalWrite(pin_led_test,HIGH);
 		return TRUE;
 	 } else {
+		 digitalWrite(pin_led_test,LOW);
 		 return FALSE;
 	 }
 }
@@ -976,17 +948,11 @@ void led_test() { // Startup test for LEDs
 		analogWrite(pin_led_red, 255);
 		analogWrite(pin_led_green, 255);
 		analogWrite(pin_led_uv, 255);
-		digitalWrite(pin_led_finger_white_red, LOW);
-		digitalWrite(pin_led_finger_blue, HIGH);
-		digitalWrite(pin_led_finger_green, HIGH);
 		delay(250);
 		analogWrite(pin_led_red, 0);
 		analogWrite(pin_led_green, 0);
 	  analogWrite(pin_led_uv, 0);
-		digitalWrite(pin_led_finger_white_red, HIGH);
-		digitalWrite(pin_led_finger_blue, LOW);
-		digitalWrite(pin_led_finger_green, LOW);
-		delay(500);
+		delay(250);
 	}
 }
 
@@ -1066,8 +1032,6 @@ unsigned char whackSolenoid(){
     digitalWrite(PIN_SOLENOID, HIGH);
   }
   else{
-    solenoidComplete = false;
-    machineState = LAUGH_AT_PLAYER;
     if(TDEBUG & DEBUG_MACHINE_STATE){
       Serial.print("state: ");
       Serial.println(machineState);
@@ -1234,4 +1198,25 @@ unsigned char checkForTimeout(unsigned long initialTime, unsigned long timeoutDu
   }else{
     return false;
   }
+}
+
+void resetAllStateFlags(){
+  countSpoken = false;
+  //Mirror light variables
+  mirrorTimerStarted = false;  
+  mirrorAlignmentTimeoutTimerStarted = false;
+  
+  
+  //User State Variables
+  playerDetectedTimeoutStarted = false;
+  
+  waitForPlayerToLeaveTimeoutStarted = false;
+  
+  //Sound file flags
+  timeToLaugh = false;
+  laughPlayed = false;
+  distanceAchievedPlayed = false;
+  nowLookIntoMyMirrorPlayed = false;
+  leaveFilePlayed = false;
+  lastFilePlaySuccess = false;  
 }
