@@ -137,12 +137,14 @@ unsigned char asnd_leave[] = {
 
 #define PLAYER_DISTANCE_TIMEOUT_LENGTH 20000 //milliseconds
 
-#define pin_led_test 13
 
 // Variables you might want to change
 #define pin_led_red 9      // Red LED pin
 #define pin_led_green 10   // Green LED pin
 #define pin_led_uv 11      // UV LED pin
+#define pin_led_finger_white_red 13 // White = high, Red = low
+#define pin_led_finger_blue 8 // Blue LED strip to right
+#define pin_led_finger_green 12 // Green LED strip to left
 #define pin_face_sen 14    // Face sensor pin
 #define delay_red_green_min 5000 // minimum time red/green is on
 #define delay_red_green_max 10000 // maximum time red/green is on
@@ -246,6 +248,11 @@ unsigned char selectRandomLaugh = 0;
 unsigned char leaveFilePlayed = false;
 unsigned char selectRandomFingersPhrase = 0;
 unsigned char lastFilePlaySuccess = false;
+// Finger light flags
+unsigned long flStartTime = 0;
+#define flFlashOnTime 1000
+#define flFlashOffTime 500
+#define flFlashCount 20
 
 void setup() {
   randomSeed(analogRead(0));
@@ -273,7 +280,9 @@ void setup() {
   Serial.write(0xE0); //Set Volume 0xC8-E7
   delay(100);
   pinMode(pin_tcb380Active, INPUT);
-  pinMode(pin_led_test, OUTPUT);
+  pinMode(pin_led_finger_white_red, OUTPUT);
+  pinMode(pin_led_finger_green, OUTPUT);
+  pinMode(pin_led_finger_blue, OUTPUT);
 
   //POST Routine
   //led_test();
@@ -294,6 +303,7 @@ void loop() {
   // See what we should do with the illumination LEDs
   panel_checkFade();
 
+	flashRedFingerLight(FALSE);
   //If we're in serial debug we need to skip the input read routines
   if(!(TDEBUG & 32)){
     //Scan the mux to count fingers
@@ -421,6 +431,7 @@ void loop() {
   
   //Have a laugh at the player
   if(machineState == LAUGH_AT_PLAYER){
+		flashRedFingerLight(TRUE);
     selectRandomLaugh = random(sizeof(asnd_laugh));
     lastFilePlaySuccess = playFile(asnd_laugh[selectRandomLaugh], 500);
 
@@ -646,12 +657,47 @@ void loop() {
   delay(loop_delay);
 }
 
+void flashRedFingerLight(unsigned char beginFlash) {  // If this is the beginning of a flash, set this flag
+	unsigned long onTime,offTime;
+	
+	if (beginFlash && flStartTime == 0) { // Reset timer and turn the light on
+		flStartTime = ctr_time;
+		digitalWrite(pin_led_finger_white_red, LOW);
+		return;
+	} else if (flStartTime > 0) { // Currently flashing
+		unsigned long flashTime = ctr_time - flStartTime; // Time we have flashed so far
+		//debugSay(flashTime);
+		//delay(5000);
+		// See if we should transition
+		for (unsigned long x=1; x<=flFlashCount; x++) {
+			onTime = x * flFlashOnTime;
+			offTime = onTime + flFlashOffTime;
+			
+			if (flashTime >= 0 && flashTime <= onTime) { // Turn it on
+				digitalWrite(pin_led_finger_white_red, LOW);
+				return;
+			} else if (flashTime > onTime && flashTime < offTime) { // Turn it off
+				digitalWrite(pin_led_finger_white_red, HIGH);
+				return;
+			}
+		}
+		// See if we should end the loop
+		unsigned long flashTotalTime = flFlashCount * (flFlashOffTime + flFlashOnTime); 	// Total time we will flash
+		if (flashTime > flashTotalTime) { // Reset the LED to white and the reset counter
+			digitalWrite(pin_led_finger_white_red, HIGH);
+			flStartTime = 0;
+			return;
+		}
+	} else { // Just turn on the white LED
+		digitalWrite(pin_led_finger_white_red, HIGH);
+	}
+	// Do nothing because beginFlash is false and we aren't flashing...
+}
+
 unsigned char is_sound_playing() {  // Returns true if there is a sound playing
 	 if (digitalRead(pin_tcb380Active) == 0) { //Active low from mp3 module while sound is playing
-		digitalWrite(pin_led_test,HIGH);
 		return TRUE;
 	 } else {
-		 digitalWrite(pin_led_test,LOW);
 		 return FALSE;
 	 }
 }
@@ -948,11 +994,17 @@ void led_test() { // Startup test for LEDs
 		analogWrite(pin_led_red, 255);
 		analogWrite(pin_led_green, 255);
 		analogWrite(pin_led_uv, 255);
-		delay(250);
+		digitalWrite(pin_led_finger_white_red, LOW);
+		digitalWrite(pin_led_finger_blue, HIGH);
+		digitalWrite(pin_led_finger_green, HIGH);
+		delay(150);
 		analogWrite(pin_led_red, 0);
 		analogWrite(pin_led_green, 0);
 	  analogWrite(pin_led_uv, 0);
-		delay(250);
+		digitalWrite(pin_led_finger_white_red, HIGH);
+		digitalWrite(pin_led_finger_blue, LOW);
+		digitalWrite(pin_led_finger_green, LOW);
+		delay(150);
 	}
 }
 
