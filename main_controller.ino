@@ -19,7 +19,7 @@
 #define DEBUG_SERIAL 32
 #define DEBUG_INNER_LED 64
 //unsigned char TDEBUG = DEBUG_SERIAL | DEBUG_MACHINE_STATE | DEBUG_MP3;
-unsigned char TDEBUG = 40;
+unsigned char TDEBUG = 0;
 
 // Defines for all of the sound files
 //1,01,One
@@ -131,7 +131,7 @@ unsigned char asnd_leave[] = {
 #define PIN_SOLENOID 4
 
 //Distance
-#define DISTANCE_SENSOR_TOO_FAR 125
+#define DISTANCE_SENSOR_TOO_FAR 100
 #define DISTANCE_SENSOR_TOO_CLOSE 160
 
 #define FINGER_DEBOUCE_LENGTH 250 //counting in loop cycles right now
@@ -207,9 +207,9 @@ unsigned long fingerCountTimeout = 0;
 unsigned char fingerCountTimeoutStarted = false; //Set on timeout begin
 
 unsigned char countSpoken = FALSE;
-#define FINGER_COUNT_TIMEOUT_LENGTH 15000
-#define MIRROR_TIMEOUT_LENGTH 15000
-#define WAIT_TO_LEAVE_TIMEOUT_LENGTH 15000
+#define FINGER_COUNT_TIMEOUT_LENGTH 20000
+#define MIRROR_TIMEOUT_LENGTH 20000
+#define WAIT_TO_LEAVE_TIMEOUT_LENGTH 20000
 unsigned long solenoidTimer = 0;
 unsigned char solenoidComplete = false;
 
@@ -289,7 +289,7 @@ void setup() {
 
   //POST Routine
   //led_test();
-  //lightBoxTest();
+  lightBoxTest();
   //solenoidTest();
   //playFile(SND_DONECOUNT, 0);
   //debugSay(123);
@@ -621,6 +621,7 @@ void loop() {
       mirrorTimerStarted = TRUE;
     }
     if(flashMirrorLight()){ //flashMirrorLight will return true once it's complete
+      mirrorAlignmentTimeoutTimerStarted = false; //reset flag - should already be resest, but try this
       machineState = LAUGH_AT_PLAYER_AGAIN;
       if(TDEBUG & DEBUG_MACHINE_STATE){
         Serial.print("state: ");
@@ -680,8 +681,8 @@ void loop() {
           if(TDEBUG & DEBUG_MACHINE_STATE){
             Serial.print("state: ");
             Serial.println(machineState);
-          }          
-      }                         
+          }  
+      }
     }
   }
 
