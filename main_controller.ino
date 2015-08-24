@@ -17,8 +17,9 @@
 #define DEBUG_MACHINE_STATE 8
 #define DEBUG_MP3 16
 #define DEBUG_SERIAL 32
+#define DEBUG_INNER_LED 64
 //unsigned char TDEBUG = DEBUG_SERIAL | DEBUG_MACHINE_STATE | DEBUG_MP3;
-unsigned char TDEBUG = 0;
+unsigned char TDEBUG = 40;
 
 // Defines for all of the sound files
 //1,01,One
@@ -254,7 +255,7 @@ unsigned long flStartTime = 0;
 #define flFlashCount 5
 // Case light flags
 unsigned long caseFlashTime = 0;
-#define caseFlashRate 6 // This is a binary shift so 8 = 256ms, 7 = 128ms, 6 = 64ms;
+#define caseFlashRate 7 // This is a binary shift so 8 = 256ms, 7 = 128ms, 6 = 64ms;
 
 void setup() {
   randomSeed(analogRead(0));
@@ -287,7 +288,7 @@ void setup() {
   pinMode(pin_led_finger_blue, OUTPUT);
 
   //POST Routine
-  led_test();
+  //led_test();
   //lightBoxTest();
   //solenoidTest();
   //playFile(SND_DONECOUNT, 0);
@@ -313,7 +314,12 @@ void loop() {
 // Mirror - blue
 // Wait - wait for player to leave - All off
 	
-	switch (machineState) {				
+	switch (machineState) {
+		case PLAYER_DETECTED:
+  		led_internal_green_on(true);
+  		led_internal_blue_on(true);
+			break;
+			
 		case NO_PLAYER_DETECTED:
   		led_internal_green_on(true);
   		led_internal_blue_on(true);
@@ -329,6 +335,11 @@ void loop() {
   		led_internal_blue_on(true);
 			break;
 		
+		case LAUGH_AT_PLAYER_AGAIN:
+			led_internal_green_on(false);
+  		led_internal_blue_on(true);
+			break;
+			
 		case WAIT_FOR_PLAYER_TO_LEAVE:
   		led_internal_green_on(false);
   		led_internal_blue_on(false);
@@ -593,8 +604,12 @@ void loop() {
           if(TDEBUG & DEBUG_MACHINE_STATE){
             Serial.print("state: ");
             Serial.println(machineState);
-          }          
-        }        
+          }
+        }
+				  if(TDEBUG & DEBUG_SERIAL){
+            Serial.print("Done with Mirror: ");
+            Serial.println(lastFilePlaySuccess);
+          }
       }    
     }
   }
@@ -810,7 +825,7 @@ void panel_checkFade() { // See if we should fade to another LED for the panel
         led_level_change = 1;
       }
 
-      led_cross_on = led_level_change * led_bright;	ctr_time = 10; // Need this for 
+      led_cross_on = led_level_change * led_bright;
 
       led_cross_off = led_bright - (led_level_change * led_bright);
 
@@ -1092,7 +1107,7 @@ unsigned char playFile(unsigned char fileNumber, unsigned long delaySinceLastPla
   } 
 
   //Play file if ready
-  if(TDEBUG & DEBUG_MP3) { 
+  if(TDEBUG & DEBUG_MP3 || TDEBUG & DEBUG_SERIAL) { 
     //Adding timer from readyToPlayNextMP3 to Serial debug code
     //Not good to nest these if's but it makes more sense to me
     if((currentTime - timeLastFileCompleted) > delaySinceLastPlayed){  
@@ -1264,7 +1279,7 @@ void serialDebugRead(){
                   totalFingersCounted = 10;
                 }
                 else if(incomingByte == 'D'){
-                  userDistance = 115;
+                  userDistance = 140;
                 }
                 
                 // say what you got:
@@ -1285,6 +1300,8 @@ unsigned char checkForTimeout(unsigned long initialTime, unsigned long timeoutDu
       Serial.println(currentTime);
       Serial.print("Initial Time: ");
       Serial.println(initialTime);
+			Serial.print("mirrorAlignmentTimeoutTimerStarted: ");
+			Serial.println(mirrorAlignmentTimeoutTimerStarted);
     }
 
   if((currentTime -  initialTime) >= timeoutDuration){
@@ -1319,11 +1336,26 @@ void led_internal_green_on(unsigned char turnOn) {
 	if (turnOn) {
 		// See if we should turn on or off
 		if ((ctr_time >> caseFlashRate) % 2 == 1) {
+			if (TDEBUG & DEBUG_INNER_LED) {
+        Serial.print("on gr: ");
+        Serial.println(ctr_time);
+        delay(20);
+      }
 			digitalWrite(pin_led_finger_green, HIGH);
 		}	else {
+			if (TDEBUG & DEBUG_INNER_LED) {
+        Serial.print("of gr: ");
+        Serial.println(ctr_time);
+        delay(20);
+      }
 			digitalWrite(pin_led_finger_green, LOW);
 		} 
 	} else { // Turn off
+			if (TDEBUG & DEBUG_INNER_LED) {
+        Serial.print("o2 gr: ");
+        Serial.println(ctr_time);
+        delay(20);
+      }
 		digitalWrite(pin_led_finger_green, LOW);
 	}
 }
@@ -1332,11 +1364,26 @@ void led_internal_blue_on(unsigned char turnOn) {
 	if (turnOn) {
 		// See if we should turn on or off
 		if ((ctr_time >> caseFlashRate) % 2 == 0) {
+			if (TDEBUG & DEBUG_INNER_LED) {
+        Serial.print("on bl: ");
+        Serial.println(ctr_time);
+        delay(20);
+      }
 			digitalWrite(pin_led_finger_blue, HIGH);
 		}	else {
+			if (TDEBUG & DEBUG_INNER_LED) {
+        Serial.print("of bl: ");
+        Serial.println(ctr_time);
+        delay(20);
+      }
 			digitalWrite(pin_led_finger_blue, LOW);
 		} 
 	} else { // Turn off
+			if (TDEBUG & DEBUG_INNER_LED) {
+        Serial.print("o2 bl: ");
+        Serial.println(ctr_time);
+        delay(20);
+      }
 		digitalWrite(pin_led_finger_blue, LOW);
 	}
 }
